@@ -1,0 +1,2470 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<!-- Versionsnummer der Seite: bei jeder Änderung um eins erhöhen. Der Stick nimmt eine Seite aus dem Internet nur, wenn ihre Nummer nicht kleiner ist als die der eingebauten Seite. -->
+<meta name="kw-version" content="2">
+<title>Radio K.W. Wetter</title>
+<link rel="icon" href="logo.png">
+<style>
+  @font-face { font-family: Inter; font-weight: 100 900; font-display: swap; src: url(fonts/Inter.woff2) format("woff2"); }
+
+  :root {
+    --w: #ffffff;
+    --w2: rgba(255, 255, 255, .76);   /* Nebentext auf Glas */
+    --linie: rgba(255, 255, 255, .16);
+    --gelb: #ffd426;
+    --regen: #7fd4ff;
+    --aus: cubic-bezier(.23, 1, .32, 1);
+  }
+  /* 1rem = 1 % der Bildschirmhöhe: alles wächst mit 1080p/1440p mit */
+  html { font-size: 1vh; }
+  * { box-sizing: border-box; margin: 0; }
+  /* Daueranzeige: nichts markieren, nichts heranzoomen, kein Lupen-/Kopiermenü, kein grauer Tipp-Blitz, Bilder nicht ziehbar */
+  html, body { touch-action: none; -ms-touch-action: none; overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; -webkit-user-drag: none; }
+  button { touch-action: manipulation; }
+  body {
+    height: 100vh; overflow: hidden; padding: 2.2rem;
+    background: #050a1c; color: var(--w);
+    font-family: Inter, "Segoe UI", Roboto, sans-serif; font-weight: 500;
+    font-variant-numeric: tabular-nums; font-optical-sizing: auto;
+    display: grid; gap: 2rem;
+    grid-template-columns: minmax(0, 1fr) 78rem;
+    grid-template-rows: minmax(0, 1fr) 28rem;
+    cursor: none;
+  }
+  /* Quellenvermerk im unteren Rand, klein aber lesbar */
+  #quelle { position: fixed; right: 2.4rem; bottom: .5rem; font-size: 1.3rem; font-weight: 500; line-height: 1.3; color: rgba(255, 255, 255, .82); white-space: nowrap;
+    text-shadow: 0 0 .4rem rgba(0, 0, 16, .9), 0 0 1.2rem rgba(0, 0, 16, .7); }  /* bleibt auch vor hellem Taghimmel lesbar */
+  @media (max-aspect-ratio: 3/2) { #quelle { font-size: 1.5rem; } } /* Tablet: sonst unter 11 px */
+  ::selection { background: var(--w); color: #000; }
+  #himmel { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1; }
+
+  /* Glas: dunkles, durchscheinendes Material mit heller Oberkante */
+  .glas {
+    background: rgba(12, 17, 34, .66); border-radius: 3rem; overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .13);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, .2), 0 1.4rem 4rem rgba(0, 0, 10, .28);
+  }
+  body.sparsam .glas { background: rgba(12, 17, 34, .8); }  /* ohne Glas-Unschärfe scheinen sonst nachts die Sterne als Pünktchen durch die Karten */
+  @supports ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    body:not(.sparsam) .glas { background: rgba(12, 18, 38, .46); -webkit-backdrop-filter: blur(1.8rem) saturate(1.3); backdrop-filter: blur(1.8rem) saturate(1.3); }
+  }
+  .titel { font-size: 2.1rem; font-weight: 600; letter-spacing: .01em; color: var(--w2); font-variant-numeric: normal; }
+
+  /* Radar: eigene Karte, Daten vom Deutschen Wetterdienst */
+  #radarbox { position: relative; }
+  #karte { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+  #rkopf { position: absolute; top: 1.8rem; left: 2.8rem; text-shadow: 0 .2rem 1.2rem rgba(0, 0, 0, .55); }
+  #rkopf div { display: flex; align-items: baseline; gap: 1.4rem; margin-top: .3rem; }
+  #rwann { font-size: 4.4rem; font-weight: 600; line-height: 1.1; letter-spacing: -.02em; }
+  #ruhr { font-size: 2.6rem; color: var(--w2); }
+  #rkopf.alt #rwann { color: var(--gelb); }
+  /* Vorhersage im Film: anders gefärbt und mit Zeitleiste, damit sie niemand für das Live-Bild hält */
+  #rwann.vorher { color: var(--regen); }
+  #rfilm { position: absolute; left: 9.6rem; right: 38rem; bottom: 4.4rem; height: .6rem; border-radius: 1rem; background: rgba(255, 255, 255, .18); opacity: 0; transition: opacity .4s; }
+  #rfilm i { display: block; height: 100%; width: 0; border-radius: 1rem; background: var(--regen); }
+  #rfilm.an { opacity: 1; }
+  #radarbox.ohneregen:not(.mitfeld) #rfilm { display: none; }
+  /* Zoom: senkrechte Pille direkt über dem Ebenen-Knopf (Tropfen); weicht, solange das Ebenen-Menü offen ist */
+  #rzoom { position: absolute; left: 2.2rem; bottom: 8.3rem; display: flex; flex-direction: column; border-radius: 9rem;
+    background: rgba(8, 12, 28, .62); box-shadow: inset 0 0 0 .2rem rgba(255, 255, 255, .28); transition: opacity .2s; }
+  #radarbox.menue #rzoom { opacity: 0; pointer-events: none; }
+  #rzoom button { -webkit-appearance: none; appearance: none; width: 5.4rem; height: 5.4rem; padding: 0; border: 0; border-radius: 9rem; background: none; color: #fff;
+    cursor: pointer; display: flex; align-items: center; justify-content: center; transition: opacity .2s, background .2s; }
+  #rzoom button + button { border-top: 1px solid rgba(255, 255, 255, .18); border-radius: 0 0 9rem 9rem; }
+  #rzoom button:first-child { border-radius: 9rem 9rem 0 0; }
+  #rzoom button:active { background: rgba(255, 255, 255, .16); }
+  #rzoom button[aria-disabled="true"] { opacity: .3; cursor: default; }
+  #rzoom button:focus-visible { outline: .25rem solid #fff; outline-offset: .2rem; }
+  #rzoom svg { width: 2.6rem; height: 2.6rem; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; }
+  /* roter, pulsierender Punkt vor „Live“ (nur bei frischem Radarbild) */
+  #rwann.live::before { content: ""; display: inline-block; width: 1rem; height: 1rem; margin: 0 .8rem 0 -1.8rem; border-radius: 50%;
+    background: #ff3b30; vertical-align: middle; position: relative; top: -.2rem; animation: puls 1.8s steps(8) infinite; }
+  @keyframes puls { 0% { box-shadow: 0 0 0 0 rgba(255, 59, 48, .7); } 70%, 100% { box-shadow: 0 0 0 .7rem rgba(255, 59, 48, 0); } }
+  @media (prefers-reduced-motion: reduce) { #rwann.live::before { animation: none; } }
+  /* Ebenen-Auswahl unten links: runder Knopf mit dem Symbol der aktuellen Ebene, klappt nach oben eine Reihe Symbole auf */
+  #rebene { position: absolute; left: 2.2rem; bottom: 2rem; display: flex; flex-direction: column-reverse; align-items: center; gap: .7rem; }
+  #rebene button { -webkit-appearance: none; appearance: none; width: 5.4rem; height: 5.4rem; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; background: rgba(8, 12, 28, .62); color: #fff; transition: background .2s, color .2s; }
+  #rebene svg { width: 2.8rem; height: 2.8rem; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #rebene .haupt { box-shadow: inset 0 0 0 .2rem rgba(255, 255, 255, .28); }
+  #rebene .liste { display: none; flex-direction: column-reverse; gap: .7rem; }
+  #rebene.offen .liste { display: flex; }
+  #rebene .liste button[aria-pressed="true"] { background: rgba(255, 255, 255, .9); color: #0b1020; }
+  #rebene button:focus-visible { outline: .25rem solid #fff; outline-offset: .2rem; }
+  /* offenes Menü: jede Ebene mit Namen daneben (nicht nur Symbole) */
+  #rebene .liste button { position: relative; overflow: visible; }
+  #rebene .liste button::after { content: attr(aria-label); position: absolute; left: 6.4rem; top: 50%; transform: translateY(-50%); white-space: nowrap;
+    font-size: 2.2rem; font-weight: 600; line-height: 1; color: #fff; background: rgba(8, 12, 28, .82); padding: .9rem 1.4rem; border-radius: 1.2rem; pointer-events: none; }
+  #rebene .liste button[aria-pressed="true"]::after { background: rgba(255, 255, 255, .9); color: #0b1020; }
+  /* Ohne Regen (Warnungen, Wind, Temperatur) gibt es weder Bewegung noch Zugrichtung */
+  #radarbox.ohneregen:not(.mitfeld) #rmodus, #radarbox.ohneregen #rzug { display: none; }
+  #rlegende b { display: inline-block; width: 1.6rem; height: 1.6rem; border-radius: .4rem; margin-left: .6rem; vertical-align: -.2rem; }
+  #rlegende { position: absolute; top: 2.2rem; right: 2.8rem; display: flex; align-items: center; gap: 1rem; font-size: 1.9rem; font-weight: 600; color: var(--w2); text-shadow: 0 .2rem 1rem rgba(0, 0, 0, .55); }
+  /* Zugrichtung: nur Pfeil und Tempo, rechts in der Zeile von „Live“, bündig unter der Legende */
+  #rzug { position: absolute; top: 6rem; right: 2.8rem; display: flex; align-items: center; gap: .8rem; font-size: 2.4rem; font-weight: 600; line-height: 1;
+    color: #fff; white-space: nowrap; text-shadow: 0 .2rem 1rem rgba(0, 0, 0, .55); }
+  #rzug:empty { display: none; }
+  #rzug svg { width: 3.2rem; height: 3.2rem; flex: none; fill: #fff; filter: drop-shadow(0 .2rem .6rem rgba(0, 0, 0, .5)); }
+  /* Umschalter Live / Bewegung (unten rechts im Radar) */
+  /* kleiner und leichter als die runden Knöpfe daneben: nur eine zarte Fläche mit dünnem Ring, mittig zur Linie des Tropfen-Knopfs */
+  #rmodus { position: absolute; right: 2.2rem; bottom: 2.3rem; display: flex; align-items: center; box-sizing: border-box; padding: .6rem; /* Luft zwischen Rand und Knöpfen, Mitte bleibt auf der Linie des Tropfen-Knopfs */ border-radius: 9rem; background: rgba(8, 12, 28, .42); box-shadow: inset 0 0 0 .15rem rgba(255, 255, 255, .2); }
+  #rmodus button { -webkit-appearance: none; appearance: none; font: inherit; font-size: 1.55rem; font-weight: 600; line-height: 1; color: var(--w2); background: none; border: 0; cursor: pointer;
+    padding: .65rem 1.2rem; border-radius: 9rem; transition: background .25s, color .25s; }
+  #rmodus button[aria-pressed="true"] { background: rgba(255, 255, 255, .9); color: #0b1020; }
+  #rmodus button:focus-visible { outline: .25rem solid #fff; outline-offset: .2rem; }
+  @media (max-aspect-ratio: 3/2) { #rmodus button { padding: 1.6rem 1.8rem; } #rebene button, #rzoom button { width: 6rem; height: 6rem; } #rzoom { bottom: 8.9rem; } } /* Tablet: Finger brauchen ca. 44 px */
+  #rlegende i { width: 13rem; height: .9rem; border-radius: 1rem; background: linear-gradient(90deg, #6eb4ff, #3287ff, #28c8eb, #3cdc96, #aae646, #ffe132, #ff7d23, #ff462d, #e128c8); }
+
+  /* Rechte Spalte: jetzt in Wesel, darunter der Kreis */
+  #rechts { display: flex; flex-direction: column; gap: 2rem; min-height: 0; }
+  #held { position: relative; height: 19.6rem; flex: none; padding: .2rem 2.8rem 0; text-shadow: 0 .2rem 1.8rem rgba(0, 0, 0, .3);
+    isolation: isolate; }
+  /* weiche Abdunklung hinter der Schrift, läuft genau am Rand aus (keine sichtbare Kante) */
+  #held::before { content: ""; position: absolute; top: -2rem; right: -2rem; bottom: -2rem; left: -2rem; z-index: -1;
+    background: radial-gradient(closest-side, rgba(5, 10, 28, .62), rgba(5, 10, 28, .3) 60%, rgba(5, 10, 28, 0)); }  /* stark genug für 4,5:1 vor hellem Taghimmel */
+  #held img { position: absolute; top: .4rem; right: 0; height: 8rem; width: auto; filter: drop-shadow(0 .6rem 1.6rem rgba(0, 0, 20, .35)); }
+  #heldort { font-size: 3.6rem; font-weight: 600; line-height: 1.15; }
+  #heldort small { font-size: 2.6rem; font-weight: 500; color: rgba(255, 255, 255, .9); margin-left: 1rem; }
+  #heldtemp { font-size: 15rem; font-weight: 400; line-height: 15rem; letter-spacing: -.04em; margin-left: -.7rem; white-space: nowrap; }
+  #heldtext { position: absolute; right: 2.8rem; bottom: 1.6rem; display: flex; align-items: center; gap: 1.4rem; text-align: right; }
+  #heldtext > div { max-width: 31rem; }  /* sehr lange Wettertexte brechen in zwei Zeilen um */
+  #heldtext svg.w { width: 8rem; height: 8rem; flex: none; }
+  #heldtext b { display: block; font-size: 3.2rem; font-weight: 600; line-height: 1.15; }
+  #heldtext span { display: block; font-size: 2.4rem; font-weight: 500; color: rgba(255, 255, 255, .9); }
+  #heldtext span.kommt { font-weight: 600; color: var(--regen); }
+  /* Veraltet: nicht gelb flächig (Gelb = Warnband des DWD), sondern dunkles Schild mit gelbem Rand; die alten Zahlen treten zurück */
+  #warn { display: none; position: absolute; right: 2.8rem; bottom: 2.4rem; font-size: 2.6rem; font-weight: 700; line-height: 1.25; color: var(--gelb);
+    background: rgba(20, 16, 0, .78); box-shadow: inset 0 0 0 .3rem var(--gelb); border-radius: 1.2rem; padding: 1rem 1.8rem; text-shadow: none; }
+  body.veraltet #warn { display: block; }
+  body.veraltet #heldtemp, body.veraltet .ort span, body.veraltet .temp, body.veraltet .regen, body.veraltet .dreier svg.w { opacity: .4; }
+
+  /* DWD-Warnband (zwischen Kopf und Kreis, nimmt nur Platz, wenn es eine Warnung gibt) */
+  #warnband { flex: none; margin-top: -.6rem; }
+  #warnband:empty { display: none; }
+  /* Ruhig statt Signalfläche: dunkle Glasfläche wie die Karten, nur Punkt, Ereignis und dünner Rand in der Warnfarbe */
+  #warnband > div { --wc: var(--gelb); display: flex; align-items: baseline; border-radius: 1.6rem; padding: 1rem 2.4rem; font-size: 2.7rem; font-weight: 700; line-height: 1.15;
+    color: var(--wc); background: rgba(12, 18, 38, .72); box-shadow: inset 0 0 0 .15rem color-mix(in srgb, var(--wc) 45%, transparent); text-shadow: none;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }  /* immer eine Zeile: das Ereignis steht vorn, der Rest darf abgeschnitten werden */
+  #warnband > div::before { content: ""; flex: none; width: 1.1rem; height: 1.1rem; border-radius: 50%; background: var(--wc); margin-right: 1.4rem; align-self: center; }
+  #warnband small { font-size: .815em; font-weight: 500; margin-left: 1.2rem; color: rgba(255, 255, 255, .86); overflow: hidden; text-overflow: ellipsis; }
+  #warnband > div.zwei { display: block; white-space: normal; }
+  #warnband > div.zwei::before { display: inline-block; vertical-align: middle; position: relative; top: -.12em; }
+  #warnband .sv-moderate { --wc: #ff9f0a; }
+  #warnband .sv-severe { --wc: #ff453a; box-shadow: inset 0 0 0 .2rem #ff453a; }
+  #warnband .sv-extreme { --wc: #ff375f; box-shadow: inset 0 0 0 .25rem #ff375f; }
+  body.veraltet #heldtext { display: none; }
+
+  #kreis { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 1.8rem 2.8rem 1.6rem; }
+  #orte { flex: 1; min-height: 0; margin-top: 1rem; display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: minmax(0, 1fr); column-gap: 2.4rem; }
+  #orte > div { border-top: 1px solid var(--linie); display: flex; flex-direction: column; justify-content: center; min-width: 0; padding: .2rem 0; }
+  .ort b { font-size: 2.4rem; font-weight: 600; line-height: 1.15; color: rgba(255, 255, 255, .9); white-space: nowrap; font-variant-numeric: normal; }
+  .ort span { font-size: 3.6rem; font-weight: 600; line-height: 1.08; letter-spacing: -.02em; }
+  body.warnung .ort b { font-size: 2.2rem; }  /* bei Warnband ist weniger Höhe da */
+  body.warnung .ort span { font-size: 3rem; }
+  .ort.warm span { color: #ffb86b; }
+  .ort.kalt span { color: #8ecbff; }
+  #stand { grid-column: span 2; flex-direction: row !important; align-items: center; justify-content: flex-start !important; gap: 1.2rem; font-size: 2.2rem; color: var(--w2); }
+  #stand i { flex: none; width: 1.2rem; height: 1.2rem; border-radius: 50%; background: #39d67a; }
+  #stand.alt { color: var(--gelb); }
+  #stand.alt i { background: var(--gelb); }
+
+  /* Untere Leiste */
+  #leiste { grid-column: 1 / -1; display: grid; gap: 2rem; grid-template-columns: 1fr 1fr; }
+  #leiste > section { padding: 1.8rem 2.4rem 1.6rem; display: flex; flex-direction: column; }
+  .dreier { flex: 1; min-height: 0; margin-top: .6rem; display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  .dreier > div { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2rem; border-radius: 2rem; }
+  /* Tagesabschnitt ist schon vorbei: Schrift zurücknehmen, damit der laufende heraussticht. Bewusst nur Farbe, kein opacity: jede
+     halbtransparente Fläche über dem bewegten Himmel kostet auf dem Fire TV Stick Bild für Bild (Ruckler 1 % -> 19 %) */
+  .dreier .vorbei h2, .dreier .vorbei .temp { color: rgba(255, 255, 255, .5); }
+  .dreier .vorbei h2 small { color: rgba(255, 255, 255, .4); }
+  .dreier .vorbei .regen { color: color-mix(in srgb, var(--regen) 50%, transparent); }
+  .dreier .vorbei .regen svg { fill: color-mix(in srgb, var(--regen) 50%, transparent); }
+  .dreier .jetzt { background: rgba(255, 255, 255, .13); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18); }
+  .dreier .leer { grid-column: 1 / -1; text-align: center; padding: 0 2rem; font-size: 2.8rem; font-weight: 600; color: var(--w2); }
+  .dreier h2 { font-size: 3rem; font-weight: 600; line-height: 1.2; }
+  .dreier h2 small { font-size: 2.5rem; font-weight: 500; color: var(--w2); margin-left: .8rem; }
+  .dreier .jetzt small { color: rgba(255, 255, 255, .92); }
+  .dreier svg.w { width: 6.2rem; height: 6.2rem; }
+  .temp { font-size: 5.6rem; font-weight: 500; line-height: 1.05; letter-spacing: -.03em; }
+  .temp small { font-size: 3.6rem; font-weight: 500; color: var(--w2); margin-left: 1.2rem; letter-spacing: -.02em; }
+  .regen { font-size: 3rem; font-weight: 600; line-height: 1.15; color: var(--regen); display: flex; align-items: center; gap: .5rem; }
+  .regen svg { width: 2.4rem; height: 2.4rem; fill: var(--regen); }
+
+  /* Wetter-Icons */
+  svg.w { overflow: visible; }
+  body:not(.sparsam) svg.w { filter: drop-shadow(0 .4rem .8rem rgba(0, 0, 20, .28)); }
+  svg.w .kern { fill: url(#vSonne); }
+  svg.w .strahlen { stroke: #ffd426; stroke-width: 3.6; stroke-linecap: round; transform-box: fill-box; transform-origin: center; animation: dreh 50s steps(500) infinite; /* in Stufen: gleitend würde die Seite dauernd neu zeichnen */ }
+  svg.w .mond { fill: url(#vMond); }
+  svg.w .wo { fill: url(#vWolke); }
+  svg.w .tr { fill: none; stroke: var(--regen); stroke-width: 3.8; stroke-linecap: round; }
+  svg.w .tr path { animation: fall 1.3s linear infinite; }
+  svg.w .tr path:nth-child(2) { animation-delay: -.45s; }
+  svg.w .tr path:nth-child(3) { animation-delay: -.9s; }
+  svg.w .fl { fill: #fff; }
+  svg.w .fl circle { animation: fall 2.6s linear infinite; }
+  svg.w .fl circle:nth-child(2) { animation-delay: -.9s; }
+  svg.w .fl circle:nth-child(3) { animation-delay: -1.8s; }
+  svg.w .ne { fill: none; stroke: #fff; stroke-width: 3.6; stroke-linecap: round; opacity: .85; }
+  svg.w .bl { fill: #ffd426; animation: blitz 4s steps(1) infinite; }
+  @keyframes dreh { to { transform: rotate(360deg); } }
+  @keyframes fall { 0% { transform: translate(1px, -3px); opacity: .25; } 25% { opacity: 1; } 75% { opacity: 1; } 100% { transform: translate(-1.5px, 4px); opacity: .25; } }
+  @keyframes blitz { 0%, 8%, 100% { opacity: 1; } 4%, 12% { opacity: .35; } }
+
+  /* Ein Wert blendet kurz, wenn er sich wirklich ändert. Nie ganz unsichtbar (Animation könnte hängen). */
+  @keyframes neu { from { opacity: .35; filter: blur(.4rem); } }
+  .neu > * { animation: neu .6s var(--aus); }
+  @media (prefers-reduced-motion: reduce) { .neu > *, svg.w * { animation: none !important; } }
+</style>
+</head>
+<body>
+
+<canvas id="himmel" width="640" height="360" aria-hidden="true"></canvas>
+
+<!-- Farbverläufe für die Icons -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <radialGradient id="vSonne" cx=".4" cy=".35" r=".8"><stop offset="0" stop-color="#fff3a0"/><stop offset="1" stop-color="#ffb800"/></radialGradient>
+  <linearGradient id="vMond" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fffbe6"/><stop offset="1" stop-color="#e7d79a"/></linearGradient>
+  <linearGradient id="vWolke" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cfd9ea"/></linearGradient>
+</defs></svg>
+
+<main class="glas" id="radarbox">
+  <canvas id="karte"></canvas>
+  <div id="rkopf">
+    <h1 class="titel">Regenradar</h1>
+    <div><b id="rwann">lädt …</b><span id="ruhr"></span></div>
+  </div>
+  <div id="rlegende">leicht<i></i>stark</div>
+  <div id="rzug"></div>
+  <div id="rfilm" aria-hidden="true"><i></i></div>
+  <div id="rzoom" role="group" aria-label="Radar zoomen"><button type="button" data-zoom="-1" aria-label="Heranzoomen"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button><button type="button" data-zoom="1" aria-label="Herauszoomen"><svg viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button></div>
+  <div id="rebene"><button type="button" class="haupt" aria-haspopup="true" aria-expanded="false"></button><div class="liste" role="group" aria-label="Kartenebene"></div></div>
+  <div id="rmodus" role="group" aria-label="Radar-Anzeige"><button type="button" data-modus="live" aria-pressed="false">Live</button><button type="button" data-modus="bewegung" aria-pressed="false">Bewegung</button><button type="button" data-modus="beides" aria-pressed="true" aria-label="Live und Bewegung im Wechsel">Beides</button></div>
+</main>
+
+<div id="rechts">
+  <section id="held">
+    <img src="logo.png" alt="Radio K.W." draggable="false">
+    <div id="heldort">Wesel<small>jetzt</small></div>
+    <div id="heldtemp">–</div>
+    <div id="heldtext"></div>
+    <div id="warn"></div>
+  </section>
+  <div id="warnband" role="status" aria-live="polite"></div>
+  <section class="glas" id="kreis">
+    <h1 class="titel">Kreis Wesel · Temperaturen jetzt</h1>
+    <div id="orte"></div>
+  </section>
+</div>
+
+<footer id="leiste">
+  <section class="glas">
+    <h1 class="titel">Tagesverlauf</h1>
+    <div class="dreier" id="heute"></div>
+  </section>
+  <section class="glas">
+    <h1 class="titel">Die nächsten Tage</h1>
+    <div class="dreier" id="tage"></div>
+  </section>
+</footer>
+<!-- Quellenvermerk (Pflicht nach den Bedingungen des DWD, CC BY 4.0, und der Gemeindegrenzen) -->
+<div id="quelle">Daten: Deutscher Wetterdienst</div>
+
+<script src="gebiet.js"></script>
+<script>
+'use strict';
+
+var TAKT = 15 * 60 * 1000;          // Wetterdaten alle 15 Minuten neu
+var VERALTET = 25 * 60 * 1000;      // ab dann gelten Daten als veraltet (gelbe Warnung)
+var WEGWERFEN = 3 * 60 * 60 * 1000; // so alte gespeicherte Daten gar nicht mehr zeigen
+var SPEICHER = 'kw-wetter';
+// Erster Ort (Wesel, Sitz des Senders) liefert auch Tagesübersicht und Vorschau
+var ORTE = [
+  ['Wesel', 51.6586, 6.6178], ['Dinslaken', 51.5667, 6.7333], ['Voerde', 51.5975, 6.6817],
+  ['Hamminkeln', 51.7333, 6.5833], ['Hünxe', 51.6436, 6.7689], ['Neukirchen-Vluyn', 51.4411, 6.5472],
+  ['Kamp-Lintfort', 51.5, 6.5333], ['Moers', 51.4514, 6.6264], ['Alpen', 51.575, 6.5125],
+  ['Sonsbeck', 51.6089, 6.3769], ['Rheinberg', 51.5467, 6.6006], ['Xanten', 51.6622, 6.4539],
+  ['Schermbeck', 51.6944, 6.8739]
+];
+// Alle Wetterdaten vom Deutschen Wetterdienst über Bright Sky (kostenlos, auch kommerziell; Quellenvermerk Pflicht).
+var BS = 'https://api.brightsky.dev/';
+
+// Tagesabschnitte: [Name, Stunde für Temperatur/Symbol, Fenster von, bis] (Regen = höchster Wert im Fenster)
+var ABSCHNITTE = [['Morgens', 9, 6, 12], ['Mittags', 15, 12, 18], ['Abends', 21, 18, 24]];
+
+// Zum Ausprobieren: index.html?wetter=regen&phase=nacht&variante=2
+// wetter: klar heiter wolkig bedeckt nebel niesel regen eisregen schauer schnee schneeschauer gewitter hagel · phase: tag nacht daemmerung
+function probe(n) { return (location.search.match(new RegExp('[?&]' + n + '=([\\w.]+)')) || [])[1]; }
+var PROBE = { wetter: probe('wetter'), phase: probe('phase'), variante: probe('variante'), warnung: probe('warnung') };
+
+function $(id) { return document.getElementById(id); }
+function zwei(n) { return (n < 10 ? '0' : '') + n; }
+// Deutsche Uhrzeit selbst gerechnet, egal auf welche Zeitzone das Gerät eingestellt ist.
+// Sommerzeit: letzter Sonntag im März bis letzter Sonntag im Oktober, Wechsel jeweils um 01:00 Weltzeit.
+function sommerzeit(ms) {
+  var j = new Date(ms).getUTCFullYear();
+  function letzterSonntag(m) { var d = new Date(Date.UTC(j, m + 1, 0, 1)); return d.getTime() - d.getUTCDay() * 864e5; }
+  return ms >= letzterSonntag(2) && ms < letzterSonntag(9);
+}
+function berlin(d) { return new Date(+d + (sommerzeit(+d) ? 2 : 1) * 36e5); } // die UTC-Felder davon sind die deutsche Uhrzeit
+function hhmm(d) { d = berlin(d); return zwei(d.getUTCHours()) + ':' + zwei(d.getUTCMinutes()); }
+function datumHeute(d) { return berlin(d).toISOString().slice(0, 10); }
+function tagPlus(datum, n) { return new Date(Date.parse(datum + 'T12:00:00Z') + n * 864e5).toISOString().slice(0, 10); }
+function grenze(x, a, b) { return Math.min(b, Math.max(a, x)); }
+function zufall(a, b) { return a + Math.random() * (b - a); }
+function grad(t, stellen) {
+  var s = t.toFixed(stellen);
+  if (parseFloat(s) === 0) s = s.replace('-', ''); // kein „−0°“
+  return s.replace('.', ',').replace('-', '−') + '°';
+}
+
+/* ---------- Wetterlagen und Icons ---------- */
+// Jeder Wettercode (WMO-Schlüssel, aus den DWD-Daten abgeleitet): [Familie, Text, Stärke 0..1]
+var LAGEN = {
+  0: ['klar', 'Klar', 0], 1: ['heiter', 'Überwiegend klar', 0], 2: ['wolkig', 'Teils bewölkt', 0], 3: ['bedeckt', 'Bedeckt', 0],
+  45: ['nebel', 'Nebel', .7], 48: ['nebel', 'Nebel mit Reif', 1],
+  51: ['niesel', 'Leichter Niesel', .3], 53: ['niesel', 'Nieselregen', .6], 55: ['niesel', 'Starker Niesel', 1],
+  56: ['eisregen', 'Gefrierender Niesel', .4], 57: ['eisregen', 'Gefrierender Niesel', .7],
+  61: ['regen', 'Leichter Regen', .35], 63: ['regen', 'Regen', .65], 65: ['regen', 'Starker Regen', 1],
+  66: ['eisregen', 'Gefrierender Regen', .6], 67: ['eisregen', 'Starker Eisregen', 1],
+  71: ['schnee', 'Leichter Schneefall', .35], 73: ['schnee', 'Schneefall', .65], 75: ['schnee', 'Starker Schneefall', 1], 77: ['schnee', 'Schneegriesel', .4],
+  80: ['schauer', 'Leichte Schauer', .4], 81: ['schauer', 'Regenschauer', .7], 82: ['schauer', 'Heftige Schauer', 1],
+  85: ['schneeschauer', 'Schneeschauer', .5], 86: ['schneeschauer', 'Starke Schneeschauer', 1],
+  68: ['schnee', 'Schneeregen', .5],
+  95: ['gewitter', 'Gewitter', .8], 96: ['hagel', 'Gewitter mit Hagel', .9], 99: ['hagel', 'Gewitter, starker Hagel', 1]
+};
+function lage(code) { return LAGEN[code] || ['bedeckt', 'Bewölkt', 0]; }
+var ICONART = { klar: 'klar', heiter: 'heiter', wolkig: 'heiter', bedeckt: 'wolken', nebel: 'nebel', niesel: 'niesel', regen: 'regen',
+  eisregen: 'regen', schauer: 'regen', schnee: 'schnee', schneeschauer: 'schnee', gewitter: 'gewitter', hagel: 'gewitter' };
+function art(code) { return ICONART[lage(code)[0]]; }
+
+var SONNE = '<path class="strahlen" d="M32 9v6M32 49v6M9 32h6M49 32h6M15.7 15.7l4.3 4.3M44 44l4.3 4.3M15.7 48.3L20 44M44 20l4.3-4.3"/><circle class="kern" cx="32" cy="32" r="11"/>';
+var MOND = '<path class="mond" d="M46 38.5A17 17 0 1 1 25.5 18 13.5 13.5 0 0 0 46 38.5z"/>';
+// Mond hinter der Wolke: große Sichel oben rechts, deren Öffnung zur Wolke zeigt (der kleine Voll-Mond war halb verdeckt und zerfiel in zwei Stücke)
+var MONDHINTER = '<path class="mond" d="M44 30A14 14 0 1 0 30 14A11.5 11.5 0 1 1 44 30z"/>';
+var WOLKE = '<path class="wo" d="M18 44h29a10 10 0 0 0 1.5-19.9A14.5 14.5 0 0 0 20.6 21 11.6 11.6 0 0 0 18 44z"/>';
+var UNTEN = {
+  wolken: '', heiter: '',
+  nebel: '<path class="ne" d="M15 51h34M22 59h20"/>',
+  niesel: '<g class="tr"><path d="M24 50v4"/><path d="M32 54v4"/><path d="M40 50v4"/></g>',
+  regen: '<g class="tr"><path d="M24 49l-3.5 9"/><path d="M33.5 49L30 58"/><path d="M43 49l-3.5 9"/></g>',
+  schnee: '<g class="fl"><circle cx="22" cy="52" r="3"/><circle cx="32" cy="57.5" r="3"/><circle cx="42" cy="52" r="3"/></g>',
+  gewitter: '<path class="bl" d="M34 43l-9 11h7l-3 9 10-12h-7z"/><g class="tr"><path d="M19 49l-2.5 7"/><path d="M46 49l-2.5 7"/></g>'
+};
+function icon(code, tag) {
+  var a = art(code), innen;
+  if (a === 'klar') innen = tag ? SONNE : MOND;
+  else if (a === 'heiter') innen = (tag ? '<g transform="translate(16 -8) scale(.7)">' + SONNE + '</g>' : MONDHINTER) + '<g transform="translate(-3 6)">' + WOLKE + '</g>';
+  else innen = '<g transform="translate(0 ' + (a === 'wolken' ? 0 : -7) + ')">' + WOLKE + '</g>' + UNTEN[a];
+  return '<svg class="w" viewBox="0 0 64 64" role="img" aria-label="' + lage(code)[1] + '">' + innen + '</svg>';
+}
+var TROPFEN = '<svg viewBox="0 0 64 64" aria-hidden="true"><path d="M32 5c11 14 19 24 19 35a19 19 0 0 1-38 0C13 29 21 19 32 5z"/></svg>';
+function prozent(p) { return p == null ? '–' : Math.round(p) + ' %'; }
+
+/* ---------- Rechnen ---------- */
+// Höchste Regenwahrscheinlichkeit der n Stunden nach „tag, stunde Uhr“. Der Wert des DWD zu einer Uhrzeit gilt für die
+// Stunde davor (der Wert von 13 Uhr für 12–13 Uhr), darum zählen die Einträge stunde+1 … stunde+n.
+function regenMax(h, tag, stunde, n) {
+  var i0 = h.time.indexOf(tag + 'T' + zwei(stunde) + ':00'), max = null;
+  for (var i = i0 + 1; i0 >= 0 && i <= i0 + n && i < h.time.length; i++) {
+    var p = h.precipitation_probability[i];
+    if (p != null && (max == null || p > max)) max = p;
+  }
+  return max;
+}
+// Wert zur Stunde + höchste Regenwahrscheinlichkeit im Fenster von–bis
+function abschnitt(h, tag, stunde, von, bis) {
+  var i = h.time.indexOf(tag + 'T' + zwei(stunde) + ':00');
+  return { temp: h.temperature_2m[i], code: h.weather_code[i], tag: h.is_day[i], regen: regenMax(h, tag, von, bis - von) };
+}
+
+function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+// DWD-Warnungen (über Bright Sky, ohne Schlüssel). Die schwerste zuerst, nur aktuelle und baldige.
+var STUFE = { minor: 1, moderate: 2, severe: 3, extreme: 4 };
+// a._orte: in welchen der 13 Orte die Warnung gilt (fehlt = überall). Gilt sie nicht im ganzen Kreis, steht dabei, wo.
+function warnText(alarme, jetzt) {
+  var l = (alarme || []).filter(function (a) {
+    return STUFE[a.severity] && new Date(a.expires) > jetzt && new Date(a.onset) < jetzt.getTime() + 12 * 3600 * 1000;
+  }).sort(function (a, b) { return STUFE[b.severity] - STUFE[a.severity] || new Date(a.onset) - new Date(b.onset); });
+  // Der DWD warnt je Gemeinde einzeln: derselbe Frost in 7 Orten kommt als mehrere Meldungen. Gleiches Ereignis gleicher Stufe
+  // zählt als eine Warnung (früheste bis späteste Zeit, alle Orte zusammen), sonst stünde „+3 weitere“ hinter demselben Frost.
+  var nach = {};
+  l = l.filter(function (a) {
+    var k = a.severity + '|' + a.event_de, z = nach[k];
+    if (!z) { nach[k] = { severity: a.severity, event_de: a.event_de, onset: a.onset, expires: a.expires, _orte: a._orte && a._orte.slice() }; return true; }
+    if (new Date(a.onset) < new Date(z.onset)) z.onset = a.onset;
+    if (new Date(a.expires) > new Date(z.expires)) z.expires = a.expires;
+    if (!a._orte) z._orte = null; // eine davon gilt überall
+    else if (z._orte) a._orte.forEach(function (n) { if (z._orte.indexOf(n) < 0) z._orte.push(n); });
+    return false;
+  }).map(function (a) { return nach[a.severity + '|' + a.event_de]; });
+  if (!l.length) return '';
+  var a = l[0], von = new Date(a.onset), bis = new Date(a.expires), o = a._orte, wo = '';
+  if (o && o.length < ORTE.length) wo = ' · ' + (o.length <= 3 ? o.map(esc).join(', ') : 'in ' + o.length + ' Orten');
+  return '<div class="sv-' + a.severity + '">' + esc(warnName(a.event_de)) + '<small>'
+    + (von > jetzt ? 'ab ' + hhmm(von) : 'bis ' + hhmm(bis)) + ' Uhr' + wo + (l.length > 1 ? ' · +' + (l.length - 1) + ' weitere' : '') + '</small></div>';
+}
+// Der DWD schreibt Ereignisse in Großbuchstaben („STARKES GEWITTER“). Normal geschrieben liest es sich ruhiger.
+function warnName(s) {
+  // Eigenschaftswörter mitten im Text klein: „Schweres Gewitter mit extremen Orkanböen, extrem heftigem Starkregen und Hagel“
+  return String(s || 'Warnung').replace(/[A-ZÄÖÜ]{2,}/g, function (w, i) {
+    if (w === 'UV') return w;
+    return (i && /^(SCHWER|STARK|EXTREM|HEFTIG|ERGIEBIG|LEICHT|ORKANARTIG|GERING|MARKANT|STRENG|KRÄFTIG|ANHALTEND|GEFRIEREND|VERBREITET)(E[MNRS]?)?$/.test(w) ? w.charAt(0).toLowerCase() : w.charAt(0)) + w.slice(1).toLowerCase();
+  });
+}
+// Warnungen aller 13 Orte zusammenführen (jede Gemeinde hat eine eigene Warnzelle beim DWD)
+function warnungenZusammen(antworten) {
+  var nach = {}, liste = [];
+  antworten.forEach(function (j, i) {
+    (j.alerts || []).forEach(function (a) {
+      var k = a.alert_id || a.id;
+      if (!nach[k]) { nach[k] = a; a._orte = []; liste.push(a); }
+      if (nach[k]._orte.indexOf(ORTE[i][0]) < 0) nach[k]._orte.push(ORTE[i][0]);
+    });
+  });
+  return liste;
+}
+
+/* ---------- DWD-Daten (Bright Sky) in den Aufbau der Seite übersetzen ---------- */
+// Je Ort: Stundenwerte (für Vergangenes Messwerte, für Kommendes die DWD-Punktvorhersage MOSMIX) und die aktuelle Messung
+// der nächsten Station. Daraus entsteht pro Ort { current, hourly, daily } wie bisher, der Rest der Seite bleibt gleich.
+
+// Wetterlage einer Bright-Sky-Stunde (oder Messung) als Wettercode wie in LAGEN
+// Stärke nach den Grenzen des DWD: Regen leicht unter 2,5, stark ab 10 mm je Stunde; Schnee leicht unter 1, stark ab 5.
+function wolkenCode(w, ic) {
+  if (typeof w === 'number') return w < 15 ? 0 : w < 40 ? 1 : w < 80 ? 2 : 3;
+  return /clear/.test(ic || '') ? 0 : /partly/.test(ic || '') ? 2 : 3;
+}
+function bsCode(h) {
+  var c = h.condition, ic = h.icon || '';
+  var p = h.precipitation != null ? h.precipitation : h.precipitation_60 != null ? h.precipitation_60 : 0;
+  if (c === 'thunderstorm' || ic === 'thunderstorm') return 95;
+  if (c === 'hail' || ic === 'hail') return 96;
+  if (c === 'snow' || ic === 'snow') return p >= 5 ? 75 : p >= 1 ? 73 : 71;
+  if (c === 'sleet' || ic === 'sleet') return 68;
+  if (c === 'rain' || ic === 'rain') return p >= 10 ? 65 : p >= 2.5 ? 63 : 61;
+  // Nebel heißt Sicht unter 1 km. Die Stationen melden auch feuchten Dunst (mehrere km Sicht) als „fog“.
+  if ((c === 'fog' || ic === 'fog') && !(h.visibility >= 1000)) return 45;
+  return wolkenCode(h.cloud_cover, ic);
+}
+// Regnet es jetzt am Ort? Das sieht das Radar genauer als die Wetterstation (die nächsten stehen 13 bis 37 km entfernt).
+// r = { stufe: Regenstufe des Radars am Ort (0 = trocken), nass: wie viele der 9 Felder ringsum nass sind } oder null (kein frisches Radar).
+// Gewitter, Hagel, Schnee und Eisregen der Station bleiben stehen (Schnee sieht das Radar schlecht).
+function jetztCode(code, r, schnee, wolken) {
+  if (!r || code >= 95) return code;
+  var regen = (code >= 61 && code <= 65) || (code >= 80 && code <= 82), niederschlag = code >= 51;
+  if (r.stufe && r.nass >= 3 && !niederschlag) { // mindestens 3 Felder: ein einzelnes Störpixel zählt nicht
+    return schnee ? (r.stufe >= 7 ? 75 : r.stufe >= 4 ? 73 : 71) : (r.stufe >= 9 ? 65 : r.stufe >= 6 ? 63 : 61); // Radarstufen: 4 = ab 1, 6 = ab 3, 7 = ab 5, 9 = ab 10 mm/h
+  }
+  if (!r.nass && regen) return wolkenCode(wolken);
+  return code;
+}
+
+// Sonnenauf- und -untergang (Sonnenaufgangsgleichung, auf wenige Minuten genau); tagMs = Mittag (UTC) des Tages
+function sonnenzeiten(tagMs, lat, lon) {
+  var r = Math.PI / 180, n = Math.round(tagMs / 864e5 + 2440587.5 - 2451545 + .0008), J = n - lon / 360;
+  var M = (357.5291 + .98560028 * J) % 360, C = 1.9148 * Math.sin(M * r) + .02 * Math.sin(2 * M * r) + .0003 * Math.sin(3 * M * r);
+  var L = (M + C + 282.9372) % 360, T = 2451545 + J + .0053 * Math.sin(M * r) - .0069 * Math.sin(2 * L * r);
+  var sd = Math.sin(L * r) * Math.sin(23.4397 * r), cd = Math.cos(Math.asin(sd));
+  var w = Math.acos((Math.sin(-.833 * r) - Math.sin(lat * r) * sd) / (Math.cos(lat * r) * cd)) / r;
+  function ms(j) { return (j - 2440587.5) * 864e5; }
+  return [ms(T - w / 360), ms(T + w / 360)];
+}
+
+// Tagessymbol: Niederschlag, wenn er tagsüber (7–19 Uhr) mindestens 2 Stunden vorkommt, sonst die häufigste Bewölkung
+function tagesCode(codes) {
+  function haeufigster(l) {
+    var z = {}, best = null;
+    l.forEach(function (c) { z[c] = (z[c] || 0) + 1; if (best === null || z[c] > z[best] || (z[c] === z[best] && c > best)) best = c; });
+    return best;
+  }
+  var nass = codes.filter(function (c) { return c >= 51; });
+  if (nass.length >= 2) return haeufigster(nass);
+  var t = haeufigster(codes.filter(function (c) { return c < 51; }));
+  return t === null ? 3 : t;
+}
+
+// Temperatur zur Zeit t aus den Stundenwerten (linear zwischen den beiden Nachbarstunden).
+// nurIds: nur Werte dieser Quellen (z. B. nur die Vorhersage, nicht die Messung einer fernen Station)
+// Für die letzte Stunde liefert Bright Sky oft schon die Messung statt der Vorhersage; dann beginnt die Vorhersage erst nach t.
+// In dem Fall wird höchstens 90 Minuten von den ersten beiden Vorhersagestunden zurückgerechnet (sonst gäbe es zeitweise keinen Wert).
+function tempZu(stunden, t, nurIds) {
+  var l = stunden.filter(function (x) { return typeof x.temperature === 'number' && (!nurIds || nurIds[x.source_id]); }), i = 0;
+  if (l.length < 2) return null;
+  while (i + 2 < l.length && Date.parse(l[i + 1].timestamp) < t) i++;
+  var a = l[i], b = l[i + 1], ta = Date.parse(a.timestamp), tb = Date.parse(b.timestamp);
+  if (t < ta - 54e5 || t > tb) return null;
+  return a.temperature + (b.temperature - a.temperature) * (t - ta) / (tb - ta);
+}
+function vorhersageIds(quellen) {
+  var ids = {};
+  (quellen || []).forEach(function (q) { if (q.observation_type === 'forecast') ids[q.id] = 1; });
+  return ids;
+}
+// Station, deren Messung die Temperatur liefert (Bright Sky nimmt bei Lücken eine andere Station)
+function tempStation(aktuell) {
+  if (!aktuell || !aktuell.weather) return null;
+  var w = aktuell.weather, id = (w.fallback_source_ids || {}).temperature || w.source_id;
+  var q = (aktuell.sources || []).filter(function (x) { return x.id === id; })[0];
+  return q && typeof w.temperature === 'number' ? { id: q.id, name: q.station_name, lat: q.lat, lon: q.lon, messung: w.temperature, zeit: Date.parse(w.timestamp) } : null;
+}
+
+// jetzt = Zeitpunkt des Abrufs (nur für die Tests einstellbar)
+function ortUebersetzen(stunden, aktuell, lat, lon, quellen, jetzt) {
+  var h = { time: [], temperature_2m: [], precipitation_probability: [], weather_code: [], is_day: [] }, nachZeit = {}, tage = {}, reihe = [];
+  if (jetzt == null) jetzt = Date.now();
+  stunden.forEach(function (x, i) {
+    var datum = x.timestamp.slice(0, 10), t = Date.parse(x.timestamp), s = sonnenzeiten(Date.parse(datum + 'T12:00:00Z'), lat, lon);
+    var tag = /-night$/.test(x.icon || '') ? 0 : /-day$/.test(x.icon || '') ? 1 : t > s[0] && t < s[1] ? 1 : 0;
+    var regen = x.precipitation_probability != null ? x.precipitation_probability : x.precipitation > .05 ? 100 : 0; // Messung: hat es geregnet?
+    h.time.push(x.timestamp.slice(0, 13) + ':00'); h.temperature_2m.push(x.temperature); h.precipitation_probability.push(regen);
+    h.weather_code.push(bsCode(x)); h.is_day.push(tag);
+    nachZeit[t] = i;
+  });
+  // Der DWD gibt zusätzlich die Wahrscheinlichkeit für Regen in 6 Stunden an. Die ist höher als jede einzelne Stunde und passt
+  // zu unseren 6-Stunden-Abschnitten: Sie wird in die Mitte ihres Zeitraums eingetragen (höchster Wert gewinnt).
+  // Liegt die Mitte schon in der Vergangenheit, bleibt dort stehen, was wirklich war.
+  stunden.forEach(function (x) {
+    if (x.precipitation_probability_6h == null) return;
+    var mitte = Date.parse(x.timestamp) - 3 * 36e5, i = nachZeit[mitte];
+    if (i != null && mitte >= jetzt) h.precipitation_probability[i] = Math.max(h.precipitation_probability[i], x.precipitation_probability_6h);
+  });
+  h.time.forEach(function (zeit, i) {
+    var datum = zeit.slice(0, 10), std = +zeit.slice(11, 13), te = h.temperature_2m[i];
+    if (!tage[datum]) { tage[datum] = { max: -99, min: 99, regen: 0, codes: [], s: sonnenzeiten(Date.parse(datum + 'T12:00:00Z'), lat, lon) }; reihe.push(datum); }
+    var d = tage[datum];
+    if (typeof te === 'number') { d.max = Math.max(d.max, te); d.min = Math.min(d.min, te); }
+    // Regen: der Wert von 0 Uhr gilt für 23–24 Uhr, gehört also zum Tag davor
+    var rd = std === 0 ? tage[i ? h.time[i - 1].slice(0, 10) : ''] : d;
+    if (rd) rd.regen = Math.max(rd.regen, h.precipitation_probability[i]);
+    if (std >= 7 && std <= 19) d.codes.push(h.weather_code[i]);
+  });
+  reihe = reihe.filter(function (k) { return tage[k].max > -99 && tage[k].codes.length >= 6; }); // nur Tage mit genug Werten
+  var w = (aktuell && aktuell.weather) || {}, ids = vorhersageIds(quellen);
+  return {
+    hourly: h,
+    // DWD-Punktvorhersage (MOSMIX) dieses Orts je Stunde: [Zeit, Temperatur, Wind km/h, Wind aus Grad] – daran werden die Flächen angeglichen
+    mos: stunden.filter(function (x) { return ids[x.source_id]; }).map(function (x) { return [Date.parse(x.timestamp), x.temperature, x.wind_speed, x.wind_direction]; }),
+    daily: { time: reihe,
+      temperature_2m_max: reihe.map(function (k) { return tage[k].max; }), temperature_2m_min: reihe.map(function (k) { return tage[k].min; }),
+      weather_code: reihe.map(function (k) { return tagesCode(tage[k].codes); }), precipitation_probability_max: reihe.map(function (k) { return tage[k].regen; }),
+      sunrise: reihe.map(function (k) { return new Date(tage[k].s[0]).toISOString(); }), sunset: reihe.map(function (k) { return new Date(tage[k].s[1]).toISOString(); }) },
+    current: { lat: lat, lon: lon, vorhersage: tempZu(stunden, jetzt, vorhersageIds(quellen)), station: tempStation(aktuell),
+      weather_code: aktuell ? bsCode(w) : null, is_day: /-night$/.test(w.icon || '') ? 0 : /-day$/.test(w.icon || '') ? 1 : null,
+      wind_speed_10m: w.wind_speed_10, wind_direction_10m: w.wind_direction_10, wind_gusts_10m: w.wind_gust_speed_10, cloud_cover: w.cloud_cover,
+      wind_km: stationKm(aktuell, 'wind_speed_10', lat, lon), windStation: windStation(aktuell) }
+  };
+}
+// Station, die den Wind misst, mit ihrer Messung (für das Angleichen der Windfläche)
+function windStation(aktuell) {
+  var w = aktuell && aktuell.weather, id = w && ((w.fallback_source_ids || {}).wind_speed_10 || w.source_id);
+  var q = w && (aktuell.sources || []).filter(function (x) { return x.id === id; })[0];
+  return q && typeof w.wind_speed_10 === 'number' && typeof w.wind_direction_10 === 'number'
+    ? { id: q.id, lat: q.lat, lon: q.lon, kmh: w.wind_speed_10, von: w.wind_direction_10, zeit: Date.parse(w.timestamp) } : null;
+}
+// Wind als Pfeil in m/s: [nach Osten, nach Norden]; von = woher er kommt (Wetterdienst-Angabe)
+function windVek(kmh, von) { var s = kmh / 3.6, r = von * Math.PI / 180; return [-s * Math.sin(r), -s * Math.cos(r)]; }
+// Wert i der Punktvorhersage zur Zeit t, zwischen zwei Stunden linear; null, wenn es dafür keine Vorhersage gibt
+function mosAn(mos, t, i) {
+  for (var k = 0; mos && k + 1 < mos.length; k++) {
+    var a = mos[k], b = mos[k + 1];
+    if (a[0] <= t && t <= b[0] && b[0] - a[0] <= 36e5 && typeof a[i] === 'number' && typeof b[i] === 'number') return a[i] + (b[i] - a[i]) * (t - a[0]) / (b[0] - a[0]);
+  }
+  return null;
+}
+// Wie weit die Station steht, die diesen Wert misst (Bright Sky nimmt bei Lücken eine fernere: für Arnheim misst Kleve, 27 km)
+var NAH = 12; // km: so weit gilt eine Messung noch für den Ort, sonst zeigt die Karte das Modell
+function stationKm(aktuell, feld, lat, lon) {
+  var w = aktuell && aktuell.weather, id = w && ((w.fallback_source_ids || {})[feld] || w.source_id);
+  var q = w && (aktuell.sources || []).filter(function (x) { return x.id === id; })[0];
+  return q ? kmZwischen(lat, lon, q.lat, q.lon) : 99;
+}
+
+function kmZwischen(lat1, lon1, lat2, lon2) {
+  var x = (lon2 - lon1) * Math.cos((lat1 + lat2) / 2 * Math.PI / 180) * 111.32, y = (lat2 - lat1) * 110.57;
+  return Math.sqrt(x * x + y * y);
+}
+// Temperatur „jetzt“ je Ort. Gemessen wird nur an wenigen Stationen (Duisburg-Baerl, Geldern-Walbeck, Borken …), 8–25 km entfernt.
+// Darum: DWD-Vorhersage für jetzt am Ort, korrigiert um den aktuellen Fehler der Vorhersage an den Messstationen
+// (Messung minus Vorhersage am Ort der Station), gewichtet nach Entfernung (1/d²). So gibt die Messung die Höhe vor,
+// die Vorhersage die Unterschiede zwischen den Orten. Fehlt eine Korrektur, gilt die Vorhersage; fehlt die Vorhersage,
+// gelten die Messungen der Stationen (ebenfalls nach Entfernung gewichtet).
+function jetztAngleichen(orte, stationen) {
+  var s = sonnenzeiten(Date.parse(datumHeute(Date.now()) + 'T12:00:00Z'), ORTE[0][1], ORTE[0][2]);
+  orte.forEach(function (o) {
+    var c = o.current, mitFehler = typeof c.vorhersage === 'number', feld = mitFehler ? 'fehler' : 'messung', sw = 0, sb = 0, t = null;
+    (stationen || []).forEach(function (x) {
+      if (typeof x[feld] !== 'number') return;
+      var d = Math.max(1, kmZwischen(c.lat, c.lon, x.lat, x.lon)), g = 1 / (d * d); sw += g; sb += g * x[feld];
+    });
+    if (mitFehler) t = c.vorhersage + (sw ? sb / sw : 0); else if (sw) t = sb / sw;
+    c.temperature_2m = t == null ? null : Math.round(t * 10) / 10;
+    if (c.is_day == null) c.is_day = Date.now() > s[0] && Date.now() < s[1] ? 1 : 0;
+  });
+  return orte;
+}
+
+// Ohne eigenes Abbruchsignal nach 20 s aufgeben (ein hängender Abruf soll nicht ewig offen bleiben)
+function bsHolen(pfad, signal) {
+  var ab = !signal && window.AbortController ? new AbortController() : null, zeit = ab && setTimeout(function () { ab.abort(); }, 20000);
+  return fetch(BS + pfad, { cache: 'no-store', signal: ab ? ab.signal : signal }).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    return r.json();
+  }).then(function (j) { clearTimeout(zeit); return j; }, function (e) { clearTimeout(zeit); throw e; });
+}
+// Die aktuelle Messung holen wir nur für diese Orte: Wesel (Wetterlage, Wind), Dinslaken und Moers (Wind auf der Karte),
+// Sonsbeck und Hamminkeln. Zusammen erreichen sie alle Messstationen rund um den Kreis; die übrigen Orte lieferten
+// nur dieselben Stationen noch einmal.
+var MESSORTE = [0, 1, 7, 9, 3];
+function holeDWD(signal) {
+  var von = datumHeute(Date.now()), bis = tagPlus(von, 3), bereich = '&tz=Europe%2FBerlin&date=' + von + '&last_date=' + bis;
+  return Promise.all(ORTE.map(function (o, i) {
+    var q = 'lat=' + o[1] + '&lon=' + o[2];
+    return Promise.all([bsHolen('weather?' + q + bereich, signal),
+      MESSORTE.indexOf(i) < 0 ? null : bsHolen('current_weather?' + q + '&tz=Europe%2FBerlin', signal).catch(function () { return null; })]) // Messung darf fehlen
+      .then(function (a) { return ortUebersetzen(a[0].weather || [], a[1], o[1], o[2], a[0].sources); });
+  })).then(function (orte) {
+    // Fehler der Vorhersage an jeder Messstation: Vorhersage am Ort der Station (zum Zeitpunkt der Messung) mit der Messung vergleichen.
+    // Messungen, die älter als 90 Minuten sind, zählen nicht.
+    var st = {};
+    orte.forEach(function (o) { var x = o.current.station; if (x && Date.now() - x.zeit < 54e5) st[x.id] = x; });
+    return Promise.all(Object.keys(st).map(function (id) {
+      var x = st[id];
+      return bsHolen('weather?lat=' + x.lat + '&lon=' + x.lon + bereich, signal).then(function (j) {
+        var f = tempZu(j.weather || [], x.zeit, vorhersageIds(j.sources));
+        x.fehler = typeof f === 'number' ? x.messung - f : null;
+        return x;
+      }, function () { return x; }); // ohne Korrektur dieser Station weiter
+    })).then(function (l) { return jetztAngleichen(orte, l); });
+  });
+}
+
+// Nur vollständige Antworten annehmen: lieber alte richtige Werte als halbe neue
+function gueltig(d) {
+  if (!Array.isArray(d) || d.length !== ORTE.length) return false;
+  for (var i = 0; i < d.length; i++) {
+    var c = d[i] && d[i].current;
+    if (!c || typeof c.temperature_2m !== 'number') return false;
+  }
+  if (typeof d[0].current.weather_code !== 'number') return false; // Wetterlage braucht nur Wesel
+  var h = d[0].hourly, t = d[0].daily;
+  return !!(h && t && h.time && h.time.length >= 24 && h.temperature_2m && h.precipitation_probability
+    && t.time && t.time.length >= 3 && t.temperature_2m_max && t.temperature_2m_min
+    && typeof t.temperature_2m_max[2] === 'number');
+}
+
+// Wartezeit bis zum nächsten Versuch: normal 15 min, nach Fehlern 20 s, 40 s, 80 s … höchstens 5 min
+function wartezeit(fehler) { return fehler ? Math.min(20000 * Math.pow(2, fehler - 1), 5 * 60 * 1000) : TAKT; }
+
+// Tag, Nacht oder Dämmerung (35 Minuten rund um Sonnenauf- und -untergang)
+function phase(jetzt, auf, unter, istTag) {
+  if (!auf || !unter || isNaN(auf) || isNaN(unter)) return istTag ? 'tag' : 'nacht';
+  var D = 35 * 60 * 1000;
+  if (Math.abs(jetzt - auf) < D || Math.abs(jetzt - unter) < D) return 'daemmerung';
+  return jetzt > auf && jetzt < unter ? 'tag' : 'nacht';
+}
+
+
+/* ---------- Himmel: Wetterlagen und ihre Spielarten ---------- */
+var FARBEN = {
+  tag: { klar: [[8, 58, 146], [46, 120, 206]], wolken: [[50, 64, 88], [98, 114, 138]], nebel: [[62, 72, 88], [112, 122, 138]],
+    regen: [[32, 44, 66], [70, 86, 110]], schnee: [[64, 78, 102], [116, 130, 154]], gewitter: [[18, 20, 36], [52, 54, 80]] },
+  nacht: { klar: [[2, 6, 22], [20, 30, 84]], wolken: [[9, 13, 30], [40, 48, 74]], nebel: [[10, 13, 22], [40, 46, 60]],
+    regen: [[5, 8, 17], [26, 34, 54]], schnee: [[16, 22, 38], [56, 66, 90]], gewitter: [[5, 5, 13], [28, 28, 50]] },
+  daemmerung: { klar: [[22, 34, 92], [214, 108, 84]] }
+};
+function misch(a, b, k) { return [0, 1].map(function (i) { return [0, 1, 2].map(function (n) { return a[i][n] + (b[i][n] - a[i][n]) * k; }); }); }
+function farben(ph, pal) { return (FARBEN[ph] && FARBEN[ph][pal]) || misch(FARBEN.tag[pal], FARBEN.nacht[pal], .5); }
+var PALETTE = { klar: 'klar', heiter: 'klar', wolkig: 'klar', bedeckt: 'wolken', nebel: 'nebel', niesel: 'regen', regen: 'regen', eisregen: 'regen',
+  schauer: 'regen', schnee: 'schnee', schneeschauer: 'schnee', gewitter: 'gewitter', hagel: 'gewitter' };
+
+// Spielarten je Wetterlage. Alle paar Minuten wird neu gewürfelt, damit nicht immer derselbe Regen fällt.
+function vz(z) { return z.wind < 0 ? -1 : 1; }
+var SCHNEE_ARTEN = [
+  ['Leise rieselt der Schnee', function (z) { z.flockeGr = 1.5; z.tempo = .7; z.schnee *= .75; }],
+  ['Dichtes Treiben', function (z) { z.flockeGr = .8; z.schnee = Math.min(1, z.schnee * 1.3); }],
+  ['Schneegestöber', function (z) { z.wind += vz(z) * .5; z.boe = .6; z.tempo = 1.3; }]
+];
+var GEWITTER_ARTEN = [
+  ['Blitze', function (z) { z.bolzen = 1; }],
+  ['Wetterleuchten', function (z) { z.bolzen = 0; }],
+  ['Wolkenbruch', function (z) { z.bolzen = 1; z.tropfenL = 1.5; z.boe = .5; z.regen = 1; }]
+];
+var WOLKEN_ARTEN = [
+  ['Schönwetterwolken', function (z) { z.wolkenGr = 1.25; }],
+  ['Schäfchenwolken', function (z) { z.wolkenGr = .6; z.wolken = Math.min(1, z.wolken * 1.2); }],
+  ['Schleierwolken', function (z) { z.zirren = 1; z.wolken *= .7; }]
+];
+var VARIANTEN = {
+  klar: [
+    ['Strahlend', function () {}],
+    ['Dunst', function (z) { z.dunst = 1; z.sterne *= .55; }],
+    ['Federwolken', function (z) { z.zirren = 1; }],
+    ['Milchstraße', function (z, nacht) { if (nacht) z.band = 1; else { z.zirren = .5; z.dunst = .4; } }]
+  ],
+  heiter: WOLKEN_ARTEN, wolkig: WOLKEN_ARTEN,
+  bedeckt: [
+    ['Grau in Grau', function (z) { z.wolkenGr = 1.5; z.tempoW = .5; }],
+    ['Tiefe Wolken', function (z) { z.wgrau *= .8; z.tempoW = 1.8; z.wolkenGr = 1.1; }],
+    ['Aufgelockert', function (z) { z.wolken = .78; z.wgrau = Math.min(255, z.wgrau + 25); }]
+  ],
+  nebel: [
+    ['Dichter Nebel', function (z) { z.nebel = 1; }],
+    ['Nebelschwaden', function (z) { z.nebel = .75; z.tempoW = 2.2; }],
+    ['Hochnebel', function (z) { z.nebel = .55; z.wolken = .9; }]
+  ],
+  niesel: [
+    ['Feiner Niesel', function (z) { z.tropfenL = .5; }],
+    ['Sprühregen', function (z) { z.tropfenL = .45; z.boe += .35; z.regen = Math.min(1, z.regen * 1.2); }],
+    ['Nieselschleier', function (z) { z.tropfenL = .5; z.nebel = .4; }]
+  ],
+  regen: [
+    ['Landregen', function (z) { z.wind *= .4; z.boe = 0; }],
+    ['Schräger Regen', function (z) { z.wind += vz(z) * .35; }],
+    ['Böen', function (z) { z.boe = Math.max(z.boe, .5); }],
+    ['Dicke Tropfen', function (z) { z.tropfenL = 1.6; z.regen *= .7; z.tempo = 1.2; }]
+  ],
+  eisregen: [
+    ['Eisregen', function (z) { z.glitzer = 1; }],
+    ['Eisnebel', function (z) { z.glitzer = 1; z.nebel = .3; }]
+  ],
+  schauer: [
+    ['Regenbogen', function (z, nacht) { if (nacht) z.sterne = .2; else { z.bogen = 1; z.sonne = .5; } }],
+    ['Durchziehender Schauer', function (z) { z.welle = 1; }],
+    ['Kräftiger Schauer', function (z) { z.tropfenL = 1.4; z.boe = .4; }]
+  ],
+  schnee: SCHNEE_ARTEN, schneeschauer: SCHNEE_ARTEN, gewitter: GEWITTER_ARTEN, hagel: GEWITTER_ARTEN
+};
+
+// Zielwerte des Himmels für eine Wetterlage. wx = echte Messwerte (Wind, Böen, Bewölkung)
+function himmelZiel(fam, s, ph, wx, vi) {
+  var pal = PALETTE[fam] || 'wolken', f = farben(ph, pal), nacht = ph === 'nacht';
+  if (fam === 'wolkig') f = misch(f, farben(ph, 'wolken'), .45);
+  if (fam === 'schauer') f = misch(f, farben(ph, 'klar'), .3);
+  if (fam === 'eisregen') f = misch(f, [[70, 110, 140], [150, 185, 205]], nacht ? .12 : .3);
+  var frei = { klar: 1, heiter: .75, wolkig: .45, schauer: .25, schneeschauer: .2 }[fam] || 0;
+  var z = {
+    o0: f[0][0], o1: f[0][1], o2: f[0][2], u0: f[1][0], u1: f[1][1], u2: f[1][2],
+    wolken: { klar: .05, heiter: .3, wolkig: .6, bedeckt: .95, nebel: .5, niesel: .9, regen: 1, eisregen: 1, schauer: .7, schnee: .9, schneeschauer: .7, gewitter: 1, hagel: 1 }[fam],
+    wgrau: nacht ? 150 : (pal === 'klar' ? 255 : pal === 'gewitter' ? 125 : 200), wolkenGr: 1, tempoW: 1, zirren: 0,
+    regen: 0, tropfenL: 1, tempo: 1, welle: 0, wind: wx.wind, boe: wx.boe, schnee: 0, flockeGr: 1, hagel: 0, glitzer: 0,
+    nebel: 0, dunst: 0, sterne: nacht ? frei : 0, band: 0, sonne: nacht ? 0 : frei,
+    blitz: 0, bolzen: 0, bogen: 0, laub: 0
+  };
+  if (frei > .3 && wx.wolken != null) z.wolken = (z.wolken + wx.wolken) / 2; // echte Bewölkung einrechnen
+  if (fam === 'nebel') z.nebel = .5 + .5 * s;
+  if (fam === 'niesel') { z.regen = .15 + .25 * s; z.tropfenL = .55; z.tempo = .6; }
+  if (fam === 'regen' || fam === 'eisregen') z.regen = .35 + .65 * s;
+  if (fam === 'schauer') z.regen = .3 + .7 * s;
+  if (fam === 'schnee' || fam === 'schneeschauer') z.schnee = .3 + .7 * s;
+  if (fam === 'gewitter' || fam === 'hagel') { z.regen = .9; z.blitz = 1; z.bolzen = 1; }
+  if (fam === 'hagel') z.hagel = s;
+  // Herbstlaub: September bis November bei kräftigem Wind
+  var monat = new Date().getMonth();
+  if (monat >= 8 && monat <= 10 && wx.kmh >= 22 && !z.schnee) z.laub = 1;
+  var v = (VARIANTEN[fam] || [])[vi];
+  if (v) v[1](z, nacht);
+  z.wind = grenze(z.wind, -1, 1);
+  return z;
+}
+
+/* ---------- Himmel zeichnen ---------- */
+var cv = $('himmel'), cx = cv.getContext('2d'), W = cv.width, HH = cv.height;
+// Gezeichnet wird in 640×360 Einheiten, aber auf einer größeren Fläche (Vögel, Flugzeug, Sterne, Regen werden scharf).
+// Volle Bildschirmauflösung (1080p: 3, 1440p: 4). Kommt das Gerät nicht mit, erst auf 2, dann Sparmodus mit 1.
+var S = grenze(Math.round(window.innerHeight * (window.devicePixelRatio || 1) / HH), 2, 4);
+cv.width = W * S; cv.height = HH * S;
+var ziel = himmelZiel('bedeckt', 0, 'nacht', { wind: .1, boe: 0, wolken: null, kmh: 0 }, 0), ist = JSON.parse(JSON.stringify(ziel)), phaseJetzt = 'nacht';
+var wolken = [], zirren = [], schwaden = [], tropfen = [], flocken = [], koerner = [], sterne = [], blaetter = [], n;
+for (n = 0; n < 12; n++) wolken.push({ x: zufall(0, W), y: zufall(0, HH * .75), r: zufall(90, 190), v: zufall(2, 7), a: zufall(.32, .62) });
+for (n = 0; n < 6; n++) zirren.push({ x: zufall(0, W), y: zufall(0, HH * .45), r: zufall(180, 320), v: zufall(1, 3), d: zufall(-.25, .1) });
+for (n = 0; n < 7; n++) schwaden.push({ x: zufall(0, W), y: zufall(HH * .1, HH), r: zufall(260, 460), v: zufall(3, 9) * (n % 2 ? 1 : -1) });
+for (n = 0; n < 190; n++) tropfen.push({ x: zufall(0, W), y: zufall(0, HH), v: zufall(330, 520), l: zufall(9, 18) });
+for (n = 0; n < 130; n++) flocken.push({ x: zufall(0, W), y: zufall(0, HH), v: zufall(14, 40), r: zufall(1, 2.4), p: zufall(0, 6) });
+for (n = 0; n < 60; n++) koerner.push({ x: zufall(0, W), y: zufall(0, HH), v: zufall(480, 700), r: zufall(1.4, 2.6) });
+for (n = 0; n < 130; n++) sterne.push({ x: zufall(0, W), y: zufall(0, HH * .8), p: zufall(0, 6), s: zufall(.4, 1.6), g: Math.random() < .2 ? 1.6 : 1 });
+for (n = 0; n < 16; n++) blaetter.push({ x: zufall(0, W), y: zufall(0, HH), v: zufall(60, 130), r: zufall(1.8, 3.2), p: zufall(0, 6), f: ['#d98a2b', '#b5541c', '#e0b23a', '#8a4a1f'][n % 4] });
+// Wolken als echte Texturen (einmal beim Start aus Rauschen gerechnet) statt weicher Kreise
+function weich(a, b, x) { var t = grenze((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+function rauschFeld(w, h, zellen, okt, streck) { // fraktales Rauschen 0..1; streck > 1 = waagerechte Schlieren
+  var f = new Float32Array(w * h), amp = 1, summe = 0, i, x, y;
+  for (var o = 0; o < okt; o++) {
+    var gx = zellen << o, gy = Math.max(1, Math.round(gx * h / w * streck)), gw = gx + 1, g = new Float32Array(gw * (gy + 1));
+    for (i = 0; i < g.length; i++) g[i] = Math.random();
+    for (y = 0; y < h; y++) {
+      var fy = y / h * gy, iy = fy | 0, ty = fy - iy; ty = ty * ty * (3 - 2 * ty);
+      for (x = 0; x < w; x++) {
+        var fx = x / w * gx, ix = fx | 0, tx = fx - ix, p = iy * gw + ix; tx = tx * tx * (3 - 2 * tx);
+        var a = g[p] + (g[p + 1] - g[p]) * tx, b = g[p + gw] + (g[p + gw + 1] - g[p + gw]) * tx;
+        f[y * w + x] += amp * (a + (b - a) * ty);
+      }
+    }
+    summe += amp; amp *= .5;
+  }
+  for (i = 0; i < f.length; i++) f[i] /= summe;
+  return f;
+}
+var spriteNr = 0;
+function wolkenSprite(haufen) { // haufen: Quellwolke mit flacher Unterseite, sonst Schleier (Federwolken, Nebel)
+  var w = 512, h = haufen ? 256 : 128, f = rauschFeld(w, h, haufen ? 4 : 2, 7, haufen ? 1 : 3.5);
+  for (var i = 0; i < f.length; i++) f[i] = (f[i] - .5) * 1.7 + .5; // mehr Kontrast = ausgefranste Ränder, Quellbuckel
+  var c = document.createElement('canvas'); c.width = w; c.height = h; c.id = 's' + spriteNr++;
+  var x2 = c.getContext('2d'), bild = x2.createImageData(w, h), p = bild.data;
+  for (var y = 0; y < h; y++) for (var x = 0; x < w; x++) {
+    var nx = (x / w - .5) * 2, ny = (y / h - .5) * 2, v = f[y * w + x], j = (y * w + x) * 4, a, lum;
+    if (haufen) {
+      var d = nx * nx + ny * ny * (ny < 0 ? 1 : 1.8);
+      a = weich(.12, .36, v * 1.4 - d * .8 - .12);
+      lum = grenze(195 + v * 75 - (ny + 1) * 32, 140, 255); // Buckel oben hell, Unterseite dunkler
+    } else {
+      a = weich(0, .42, v * 1.2 - (nx * nx + ny * ny) * .8 - .15) * .9;
+      lum = 255 - (1 - v) * 22;
+    }
+    a *= weich(0, .14, Math.min(x / w, 1 - x / w, y / h, 1 - y / h)); // zum Bildrand hin sicher auf 0 (keine geraden Kanten)
+    p[j] = p[j + 1] = p[j + 2] = lum; p[j + 3] = a * 255;
+  }
+  x2.putImageData(bild, 0, 0);
+  return c;
+}
+var HAUFEN = [0, 1, 2, 3].map(function () { return wolkenSprite(true); });
+var SCHLEIER = [0, 1, 2].map(function () { return wolkenSprite(false); });
+// Wolke in Grauton c einfärben (Schattierung bleibt). Zwischenspeicher, damit das nicht jedes Bild passiert.
+var getoent = {}, getoentZahl = 0;
+function toene(sp, c) {
+  var q = Math.min(255, Math.round(c / 8) * 8), key = sp.id + '_' + q, t = getoent[key];
+  if (t) return t;
+  if (++getoentZahl > 48) { for (var alt in getoent) frei(getoent[alt]); getoent = {}; getoentZahl = 1; } // Speicher klein halten
+  t = document.createElement('canvas'); t.width = sp.width; t.height = sp.height;
+  var x = t.getContext('2d');
+  x.drawImage(sp, 0, 0);
+  x.globalCompositeOperation = 'multiply'; x.fillStyle = rgba(q, q, q + 12, 1); x.fillRect(0, 0, t.width, t.height);
+  x.globalCompositeOperation = 'destination-in'; x.drawImage(sp, 0, 0);
+  return (getoent[key] = t);
+}
+function textur(sp, x, y, bw, bh, c, a) { cx.globalAlpha = grenze(a, 0, 1); cx.drawImage(toene(sp, c), x - bw / 2, y - bh / 2, bw, bh); cx.globalAlpha = 1; }
+// Feines Korn gegen Farbstufen im Verlauf (Banding)
+var korn = (function () {
+  var c = document.createElement('canvas'); c.width = c.height = 128;
+  var x = c.getContext('2d'), b = x.createImageData(128, 128), p = b.data;
+  for (var i = 0; i < p.length; i += 4) { p[i] = p[i + 1] = p[i + 2] = Math.random() < .5 ? 0 : 255; p[i + 3] = Math.random() * 12; }
+  x.putImageData(b, 0, 0);
+  return cx.createPattern(c, 'repeat');
+})();
+var ereignisse = [], naechst ={ schnuppe: 0, satellit: 0, voegel: 0, flieger: 0, bolzen: 0 };
+// Am Gerät „Bewegung reduzieren“ an: Himmel ohne Regen, Schnee, Vögel und Blitze, Wolken ziehen nur ganz langsam (1 Bild je Sekunde)
+var RUHIG = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+var blitzlicht = 0, bildMs = RUHIG ? 1000 : 42, letztesBild = 0, startMs = 0, gezeichnet = 0, geprueft = false;
+// Zeichenfläche freigeben: Safari hält den Speicher alter Flächen sonst lange fest (Dauerlauf)
+function frei(c) { if (c && c.getContext) c.width = c.height = 0; }
+function rgba(r, g, b, a) { return 'rgba(' + (r | 0) + ',' + (g | 0) + ',' + (b | 0) + ',' + grenze(a, 0, 1).toFixed(3) + ')'; }
+
+// Kleine Überraschungen: Sternschnuppen, Satelliten, Vogelschwärme, Flugzeuge, Blitze
+function ereignisseStarten(t) {
+  var trocken = ist.regen < .08 && ist.schnee < .08 && ist.hagel < .08, nacht = phaseJetzt === 'nacht';
+  function faellig(name, ok, a, b) {
+    if (!naechst[name]) naechst[name] = t + zufall(a, b) * 500; // erstes Mal etwas früher
+    if (t < naechst[name]) return false;
+    naechst[name] = t + zufall(a, b) * 1000;
+    return ok;
+  }
+  if (faellig('schnuppe', nacht && ist.sterne > .5, 25, 70))
+    ereignisse.push({ typ: 'schnuppe', t0: t, dauer: .8, x: zufall(W * .45, W), y: zufall(0, HH * .3), w: zufall(2.4, 2.9), v: 420 });
+  if (faellig('satellit', nacht && ist.sterne > .5, 120, 300))
+    ereignisse.push({ typ: 'satellit', t0: t, dauer: 45, x: -5, y: zufall(10, HH * .3), vx: zufall(14, 22), vy: zufall(-2, 3) });
+  if (faellig('voegel', !nacht && trocken && ist.nebel < .3 && ist.blitz < .5, 45, 120)) {
+    // drei Arten: Zugvögel in V-Formation, lockerer Schwarm, einzelne große Vögel (Möwe/Greifvogel), die meist segeln
+    var dir = Math.random() < .5 ? 1 : -1, r = Math.random(), tiefe = zufall(.65, 1.25), k2;
+    var art = r < .45 ? 'v' : r < .8 ? 'schwarm' : 'einzeln';
+    var anzahl = art === 'einzeln' ? 1 + (Math.random() < .4 ? 1 : 0) : art === 'v' ? 5 + (Math.random() * 7 | 0) : 8 + (Math.random() * 10 | 0);
+    var v = (art === 'einzeln' ? zufall(13, 18) : zufall(22, 32)) * tiefe, tiere = [];
+    for (k2 = 0; k2 < anzahl; k2++) {
+      var gr = zufall(.85, 1.1) * tiefe * (art === 'einzeln' ? 1.45 : .72), rang = Math.ceil(k2 / 2);
+      tiere.push({
+        dx: art === 'v' ? -rang * 11 * tiefe : art === 'schwarm' ? zufall(-60, 0) * tiefe : -k2 * 45,
+        dy: art === 'v' ? (k2 % 2 ? 1 : -1) * rang * 6 * tiefe + zufall(-1.2, 1.2) : art === 'schwarm' ? zufall(-14, 14) * tiefe : k2 * 14,
+        gr: gr, ph: zufall(0, 6.3), takt: zufall(15, 20) / Math.sqrt(gr), o: zufall(0, 10),
+        zyk: zufall(3, 6), anteil: art === 'einzeln' ? zufall(.15, .3) : zufall(.5, .75), dreh: zufall(-.15, .15)
+      });
+    }
+    ereignisse.push({ typ: 'voegel', art: art, t0: t, dauer: (W + 260) / v, x: dir > 0 ? -70 : W + 70, y: zufall(HH * .05, HH * .3),
+      dir: dir, v: v, p: zufall(0, 6), tiefe: tiefe, tiere: tiere, dreh: (Math.random() < .5 ? 1 : -1) * (art === 'einzeln' ? zufall(.3, .9) : zufall(.6, 1.2)) });
+  }
+  if (faellig('flieger', trocken && ist.wolken < .75 && ist.nebel < .3, 150, 360)) {
+    var d2 = Math.random() < .5 ? 1 : -1;
+    ereignisse.push({ typ: 'flieger', t0: t, dauer: (W + 260) / 30, x: d2 > 0 ? -20 : W + 20, y: zufall(HH * .04, HH * .22), dir: d2, v: 30, steig: zufall(-.08, .08) });
+  }
+  if (faellig('bolzen', ist.blitz > .5, 4, 13)) {
+    blitzlicht = ist.bolzen > .5 ? 1 : .7;
+    if (ist.bolzen > .5) {
+      var x = zufall(W * .3, W * .98), y = 0, pkt = [[x, 0]], ende = zufall(HH * .35, HH * .7), ast = null;
+      while (y < ende) { y += zufall(14, 30); x += zufall(-16, 16); pkt.push([x, y]); if (!ast && y > ende * .4) ast = [[x, y], [x + zufall(-40, 40), y + 30], [x + zufall(-60, 60), y + 62]]; }
+      ereignisse.push({ typ: 'bolzen', t0: t, dauer: .45, pkt: pkt, ast: ast });
+    }
+  }
+}
+// Vogel als kleines 3D-Modell: Flügel drehen sich um die Körperachse (Arm und Hand getrennt, die Hand schwingt nach).
+// Gedreht (schräg auf uns zu/von uns weg) und von leicht unten gesehen, so stimmen die Umrisse in jeder Schlagphase.
+// ph = Schlagphase, flug 1 = schlagen, 0 = gleiten, dir = Flugrichtung, dreh = Drehung in Bogenmaß (0 = genau seitlich)
+var VKIPP = .3, VSIN = Math.sin(VKIPP), VCOS = Math.cos(VKIPP);
+// Flügel von oben: [Spannweite, Vorderkante x, Hinterkante x]; Arm bis 3.6, Hand bis zur nach hinten gepfeilten Spitze
+var VFL = [[.3, .75, -1.25], [3.6, .55, -1.35], [6.6, -.5, -2], [8.8, -2.5, -2.5]];
+var VSCHWANZ = [[-2, -.35], [-4.2, -1], [-4.2, 1], [-2, .35]];
+function vogel(x, y, gr, ph, flug, dir, dreh) {
+  var arm = (Math.sin(ph) * .85 + .18) * flug + .1 * (1 - flug), hand = (Math.sin(ph - .7) * 1.05 + .1) * flug - .06 * (1 - flug);
+  var cd = Math.cos(dreh), sd = Math.sin(dreh), i, s, p, k;
+  y += Math.cos(ph) * .4 * gr * flug;
+  function P(px, py, pz) { var X = px * cd + pz * sd, Z = -px * sd + pz * cd; return [x + dir * X * gr, y - (py * VCOS + Z * VSIN) * gr]; }
+  for (s = -1; s <= 1; s += 2) {
+    var vorn = [], hinten = [];
+    for (i = 0; i < VFL.length; i++) {
+      var sp = VFL[i][0], wy, wz;
+      if (sp <= 3.6) { wy = sp * Math.sin(arm); wz = sp * Math.cos(arm); }
+      else { wy = 3.6 * Math.sin(arm) + (sp - 3.6) * Math.sin(hand); wz = 3.6 * Math.cos(arm) + (sp - 3.6) * Math.cos(hand); }
+      vorn.push(P(VFL[i][1], wy, s * wz)); hinten.unshift(P(VFL[i][2], wy, s * wz));
+    }
+    rundesPoly(vorn.concat(hinten));
+  }
+  // Körper: viele Kreise entlang der Achse (Kopf vorn schmal, Brust dick, nach hinten schlanker)
+  cx.beginPath();
+  for (k = 0; k <= 12; k++) {
+    var ax = 3.6 - k * .48, r = ax > 2.6 ? .42 + (3.6 - ax) * .14 : ax > .4 ? .56 + (2.6 - ax) * .11 : .8 - (.4 - ax) * .13;
+    p = P(ax, 0, 0); cx.moveTo(p[0] + r * gr, p[1]); cx.arc(p[0], p[1], r * gr, 0, 6.3);
+  }
+  cx.fill();
+  cx.beginPath();
+  for (i = 0; i < VSCHWANZ.length; i++) { p = P(VSCHWANZ[i][0], 0, VSCHWANZ[i][1]); if (i) cx.lineTo(p[0], p[1]); else cx.moveTo(p[0], p[1]); }
+  cx.fill();
+}
+// Umriss durch die Mitten der Kanten (weich), die Flügelspitze bleibt spitz
+function rundesPoly(p) {
+  var n = p.length, spitze = VFL.length - 1;
+  cx.beginPath(); cx.moveTo((p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2);
+  for (var i = 1; i <= n; i++) {
+    var a = p[i % n], b = p[(i + 1) % n];
+    if (i === spitze) { cx.lineTo(a[0], a[1]); cx.lineTo((a[0] + b[0]) / 2, (a[1] + b[1]) / 2); }
+    else cx.quadraticCurveTo(a[0], a[1], (a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
+  }
+  cx.fill();
+}
+function linie(pkt) { cx.beginPath(); cx.moveTo(pkt[0][0], pkt[0][1]); for (var i = 1; i < pkt.length; i++) cx.lineTo(pkt[i][0], pkt[i][1]); cx.stroke(); }
+function ereignisseZeichnen(t) {
+  for (var i = ereignisse.length - 1; i >= 0; i--) {
+    var e = ereignisse[i], a = (t - e.t0) / 1000, p = a / e.dauer, x, y, g, k;
+    if (p >= 1) { ereignisse.splice(i, 1); continue; }
+    if (e.typ === 'schnuppe') {
+      x = e.x + Math.cos(e.w) * e.v * a; y = e.y + Math.sin(e.w) * e.v * a;
+      g = cx.createLinearGradient(x, y, x - Math.cos(e.w) * 60, y - Math.sin(e.w) * 60);
+      g.addColorStop(0, rgba(255, 255, 255, (1 - p) * ist.sterne)); g.addColorStop(1, 'rgba(255,255,255,0)');
+      cx.strokeStyle = g; cx.lineWidth = 1.4; linie([[x, y], [x - Math.cos(e.w) * 60, y - Math.sin(e.w) * 60]]);
+    } else if (e.typ === 'satellit') {
+      cx.fillStyle = rgba(255, 255, 255, .75 * ist.sterne); cx.fillRect(e.x + e.vx * a, e.y + e.vy * a, 1.3, 1.3);
+    } else if (e.typ === 'voegel') {
+      // weiter weg = blasser (Luftperspektive)
+      var dunst = grenze(.12 + (1.25 - e.tiefe) * .45, 0, .5);
+      cx.fillStyle = rgba(22 + (ist.o0 - 22) * dunst, 30 + (ist.o1 - 30) * dunst, 52 + (ist.o2 - 52) * dunst, 1);
+      var x0 = e.x + e.dir * e.v * a, y0 = e.y + Math.sin(a * .4 + e.p) * 4 + (e.art === 'einzeln' ? Math.sin(a * .25 + e.p) * 10 : 0);
+      for (k = 0; k < e.tiere.length; k++) {
+        var tb = e.tiere[k], bx = tb.dx, by = tb.dy;
+        if (e.art === 'schwarm') { bx += Math.sin(a * .7 + tb.o) * 5; by += Math.cos(a * .9 + tb.o) * 3.5; } // Schwarm atmet
+        else by += Math.sin(a * 1.1 + tb.o) * 1.2;
+        var z = ((a + tb.o) % tb.zyk) / tb.zyk, flug = weich(0, .06, z) * weich(0, .06, tb.anteil - z); // schlagen, dann gleiten
+        vogel(x0 + e.dir * bx, y0 + by, tb.gr * 1.05, tb.ph + a * tb.takt, flug, e.dir, e.dreh + tb.dreh);
+      }
+    } else if (e.typ === 'flieger') {
+      x = e.x + e.dir * e.v * a; y = e.y + e.steig * e.v * a;
+      if (phaseJetzt === 'nacht') { // nur Positionslichter
+        cx.fillStyle = 'rgba(255,255,255,.85)'; cx.fillRect(x, y, 1.4, 1.4);
+        if (Math.sin(t / 220) > .6) { cx.fillStyle = 'rgba(255,60,60,.95)'; cx.fillRect(x - e.dir * 2, y, 1.6, 1.6); }
+      } else { // Kondensstreifen
+        g = cx.createLinearGradient(x, y, x - e.dir * 130, y - e.steig * 130);
+        g.addColorStop(0, 'rgba(255,255,255,.7)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+        cx.strokeStyle = g; cx.lineWidth = 1.8; linie([[x, y], [x - e.dir * 130, y - e.steig * 130]]);
+        cx.fillStyle = '#fff'; cx.fillRect(x - .8, y - .8, 2.2, 1.6);
+      }
+    } else if (e.typ === 'bolzen') {
+      cx.strokeStyle = rgba(255, 255, 255, 1 - p * p); cx.lineWidth = 2.2; linie(e.pkt);
+      cx.strokeStyle = rgba(190, 200, 255, .5 * (1 - p)); cx.lineWidth = 5; linie(e.pkt);
+      if (e.ast) { cx.strokeStyle = rgba(255, 255, 255, .8 * (1 - p)); cx.lineWidth = 1.2; linie(e.ast); }
+    }
+  }
+}
+
+function himmel(t) {
+  requestAnimationFrame(himmel);
+  if (t - letztesBild < bildMs) return;
+  var dt = Math.min((t - letztesBild) / 1000, .2), k, i, g, sek = t / 1000;
+  letztesBild = t;
+  // Kommt das Gerät nicht mit (unter 12 Bildern pro Sekunde), stufenweise sparen und jeweils neu messen:
+  // erst Auflösung 2, dann Sparmodus (Glas-Unschärfe aus, Auflösung 1 – kostet am meisten), erst zuletzt seltener zeichnen.
+  // Fire TV Stick 3. Gen.: mit Glas unter 10 Bilder/s, im Sparmodus mit Auflösung 1 flüssig (30 Bilder/s), Auflösung 2 nur 4 Bilder/s.
+  if (!startMs) startMs = t;
+  gezeichnet++;
+  var messDauer = t - startMs;
+  if (!geprueft && !RUHIG && (messDauer > 8000 || messDauer > 3000 && gezeichnet < messDauer / 250)) { // unter 4 Bildern/s nicht 8 s warten
+    if (gezeichnet >= messDauer * .012) geprueft = true;
+    else if (S > 2) { S = 2; cv.width = W * S; cv.height = HH * S; startMs = t; gezeichnet = 0; }
+    else if (!document.body.classList.contains('sparsam')) { document.body.classList.add('sparsam'); S = 1; cv.width = W; cv.height = HH; startMs = t; gezeichnet = 0; }
+    else { geprueft = true; bildMs = 100; }
+  }
+  cx.setTransform(S, 0, 0, S, 0, 0);
+  for (k in ziel) ist[k] += (ziel[k] - ist[k]) * Math.min(1, dt * 1.2); // weicher Übergang zwischen Wetterlagen
+  var wind = ist.wind + ist.boe * Math.sin(sek / 2.3) * Math.sin(sek / .9); // Böen lassen den Wind schwanken
+  var zug = (.6 + 3 * Math.abs(ist.wind)) * (ist.wind < 0 ? -1 : 1) * ist.tempoW, c = ist.wgrau;
+
+  g = cx.createLinearGradient(0, 0, 0, HH);
+  g.addColorStop(0, rgba(ist.o0, ist.o1, ist.o2, 1)); g.addColorStop(1, rgba(ist.u0, ist.u1, ist.u2, 1));
+  cx.fillStyle = g; cx.fillRect(0, 0, W, HH);
+
+  if (ist.band > .02) { // Milchstraße
+    cx.save(); cx.translate(W * .62, HH * .3); cx.rotate(-.5); cx.scale(1, .17);
+    g = cx.createRadialGradient(0, 0, 0, 0, 0, W * .7);
+    g.addColorStop(0, rgba(175, 190, 255, .2 * ist.band)); g.addColorStop(1, 'rgba(175,190,255,0)');
+    cx.fillStyle = g; cx.fillRect(-W, -W, W * 2, W * 2); cx.restore();
+  }
+  if (ist.sterne > .02) for (i = 0; i < sterne.length; i++) {
+    var s = sterne[i];
+    cx.fillStyle = rgba(255, 255, 255, ist.sterne * (.35 + .65 * Math.abs(Math.sin(sek * s.s + s.p))));
+    cx.fillRect(s.x, s.y, s.g, s.g);
+  }
+  if (ist.sonne > .02) {
+    var puls = 1 + .04 * Math.sin(sek / 3);
+    g = cx.createRadialGradient(W * .8, HH * .045, 0, W * .8, HH * .045, W * .5 * puls);
+    g.addColorStop(0, rgba(255, 240, 190, .7 * ist.sonne)); g.addColorStop(.12, rgba(255, 222, 150, .45 * ist.sonne)); g.addColorStop(1, 'rgba(255,210,140,0)');
+    cx.fillStyle = g; cx.fillRect(0, 0, W, HH);
+  }
+  if (ist.zirren > .02) for (i = 0; i < zirren.length; i++) {
+    var zi = zirren[i];
+    zi.x += zi.v * zug * dt; if (zi.x - zi.r > W) zi.x = -zi.r; if (zi.x + zi.r < 0) zi.x = W + zi.r;
+    cx.save(); cx.translate(zi.x, zi.y); cx.rotate(zi.d); cx.translate(-zi.x, -zi.y);
+    textur(SCHLEIER[i % 3], zi.x, zi.y, zi.r * 2, zi.r * .26, c + 30, .35 * ist.zirren); cx.restore();
+  }
+  if (ist.wolken > .02) for (i = 0; i < wolken.length; i++) {
+    var w = wolken[i], r = w.r * ist.wolkenGr;
+    w.x += w.v * zug * dt; if (w.x - r > W) w.x = -r; if (w.x + r < 0) w.x = W + r;
+    textur(HAUFEN[i % 4], w.x, w.y, r * 2, r, c, (w.a + .25) * ist.wolken);
+  }
+  if (ist.nebel > .02) for (i = 0; i < schwaden.length; i++) {
+    var n2 = schwaden[i];
+    n2.x += n2.v * ist.tempoW * dt; if (n2.x - n2.r > W) n2.x = -n2.r; if (n2.x + n2.r < 0) n2.x = W + n2.r;
+    textur(SCHLEIER[i % 3], n2.x, n2.y + Math.sin(sek / 7 + i) * 6, n2.r * 2, n2.r * .45, c + 25, .5 * ist.nebel);
+  }
+  if (ist.dunst > .02) {
+    g = cx.createLinearGradient(0, HH * .3, 0, HH);
+    g.addColorStop(0, 'rgba(255,236,205,0)'); g.addColorStop(1, rgba(255, 236, 205, (phaseJetzt === 'nacht' ? .1 : .3) * ist.dunst));
+    cx.fillStyle = g; cx.fillRect(0, 0, W, HH);
+  }
+  if (ist.bogen > .02) { // Regenbogen
+    var bf = [[255, 60, 60], [255, 150, 40], [255, 230, 60], [80, 210, 110], [70, 150, 255], [140, 90, 230]];
+    cx.lineWidth = 3.2;
+    for (i = 0; i < bf.length; i++) {
+      cx.strokeStyle = rgba(bf[i][0], bf[i][1], bf[i][2], .2 * ist.bogen);
+      cx.beginPath(); cx.arc(W * .62, HH * 1.08, HH * .98 - i * 3, Math.PI, 2 * Math.PI); cx.stroke();
+    }
+  }
+  if (RUHIG) ist.regen = ist.schnee = ist.hagel = ist.laub = ist.glitzer = 0;
+  else { ereignisseStarten(t); ereignisseZeichnen(t); }
+  if (ist.regen > .02) {
+    var menge = ist.regen * (ist.welle > .5 ? .55 + .45 * Math.sin(sek / 9) : 1), schraeg = wind * .9;
+    // drei Tiefen: hinten fein und blass, vorne kräftiger
+    var pfade = [new Path2D(), new Path2D(), new Path2D()], dick = ist.tropfenL > 1.3 ? 1.5 : 1;
+    for (i = 0, k = Math.round(tropfen.length * menge); i < k; i++) {
+      var d = tropfen[i], tief = (i % 3 + 1) / 3, l = d.l * ist.tropfenL * (.6 + .4 * tief);
+      d.y += d.v * ist.tempo * dt * (.7 + .3 * tief); d.x += d.v * ist.tempo * dt * schraeg * (.7 + .3 * tief);
+      if (d.y > HH) { d.y = -l; d.x = zufall(-W * .3, W * 1.3); }
+      if (d.x > W * 1.3) d.x -= W * 1.6; if (d.x < -W * .3) d.x += W * 1.6;
+      pfade[i % 3].moveTo(d.x, d.y); pfade[i % 3].lineTo(d.x - l * schraeg, d.y - l);
+    }
+    cx.lineCap = 'round';
+    for (i = 0; i < 3; i++) { cx.strokeStyle = rgba(215, 232, 255, .22 + .2 * i); cx.lineWidth = dick * (.55 + .35 * i); cx.stroke(pfade[i]); }
+  }
+  if (ist.hagel > .02) {
+    cx.fillStyle = 'rgba(240,246,255,.92)';
+    for (i = 0, k = Math.round(koerner.length * ist.hagel); i < k; i++) {
+      var h = koerner[i];
+      h.y += h.v * dt; h.x += h.v * dt * wind * .5;
+      if (h.y > HH) { h.y = -4; h.x = zufall(0, W); }
+      cx.beginPath(); cx.arc(h.x, h.y, h.r, 0, 6.3); cx.fill();
+    }
+  }
+  if (ist.schnee > .02) {
+    cx.fillStyle = 'rgba(255,255,255,.85)';
+    for (i = 0, k = Math.round(flocken.length * ist.schnee); i < k; i++) {
+      var f = flocken[i];
+      f.y += f.v * ist.tempo * dt; f.x += (Math.sin(sek + f.p) * 8 + wind * 70) * dt;
+      if (f.y > HH) { f.y = -3; f.x = zufall(0, W); }
+      if (f.x > W + 4) f.x = -3; if (f.x < -4) f.x = W + 3;
+      cx.beginPath(); cx.arc(f.x, f.y, f.r * ist.flockeGr, 0, 6.3); cx.fill();
+    }
+  }
+  if (ist.glitzer > .02) for (i = 0; i < 45; i++) { // Eis glitzert
+    var e2 = sterne[i], fl = Math.sin(sek * 3 * e2.s + e2.p);
+    if (fl > .7) { cx.fillStyle = rgba(210, 242, 255, ist.glitzer * (fl - .7) * 3); cx.fillRect(e2.x, HH - e2.y * .9, 1.6, 1.6); }
+  }
+  if (ist.laub > .02) for (i = 0, k = Math.round(blaetter.length * ist.laub); i < k; i++) {
+    var b = blaetter[i], rw = wind < 0 ? -1 : 1;
+    b.x += rw * b.v * (.5 + Math.abs(wind)) * dt; b.y += (Math.sin(sek * 1.6 + b.p) * 16 + 7) * dt;
+    if (b.x > W + 6) { b.x = -5; b.y = zufall(0, HH); } if (b.x < -6) { b.x = W + 5; b.y = zufall(0, HH); }
+    if (b.y > HH + 5) b.y = -4;
+    cx.save(); cx.translate(b.x, b.y); cx.rotate(sek * 2.2 + b.p); cx.scale(1, .5);
+    cx.fillStyle = b.f; cx.beginPath(); cx.arc(0, 0, b.r, 0, 6.3); cx.fill(); cx.restore();
+  }
+  if (blitzlicht > .02) { cx.fillStyle = rgba(225, 230, 255, blitzlicht * .5); cx.fillRect(0, 0, W, HH); blitzlicht *= .82; }
+  // Randabdunklung für Tiefe, dann Korn in echter Bildschirmauflösung
+  g = cx.createRadialGradient(W * .5, HH * .42, HH * .3, W * .5, HH * .5, W * .72);
+  g.addColorStop(0, 'rgba(0,0,10,0)'); g.addColorStop(1, 'rgba(0,0,10,.34)');
+  cx.fillStyle = g; cx.fillRect(0, 0, W, HH);
+  if (S > 1) { cx.setTransform(1, 0, 0, 1, 0, 0); cx.fillStyle = korn; cx.fillRect(0, 0, cv.width, cv.height); }
+}
+
+/* ---------- Regenradar: eigene Karte, Bilder vom Deutschen Wetterdienst ---------- */
+// km = Breite des Ausschnitts; Mitte etwas nördlich vom Kreis, weil oben links Titel und Legende liegen
+var RADAR = { lon: 6.6, lat: 51.63, km: 135, takt: 5 * 60 * 1000 };
+// Zoomstufen (+/−-Knöpfe): Breite des Kartenausschnitts in km; gewählte Stufe wird gemerkt
+var ZOOM = [45, 70, 100, 150, 220, 300], zoomNr = 1; // Standard 70 km: der Kreis Wesel füllt dann gut die Hälfte der Karte (bei 135 km nur ein Drittel)
+try { var zGemerkt = parseInt(localStorage.getItem('kw-radar-zoom'), 10); if (ZOOM[zGemerkt]) zoomNr = zGemerkt; } catch (e) {}
+RADAR.km = ZOOM[zoomNr];
+var WMS = 'https://maps.dwd.de/geoserver/dwd/wms?service=WMS&version=1.1.1&request=GetMap&layers=dwd:Niederschlagsradar&styles=&format=image/png&transparent=true&srs=EPSG:3857';
+var STAEDTE = [['Kamp-Lintfort', 6.533, 51.5], ['Hamminkeln', 6.583, 51.733], ['Duisburg', 6.762, 51.435], ['Essen', 7.012, 51.456], ['Düsseldorf', 6.773, 51.228], ['Dortmund', 7.466, 51.514], ['Münster', 7.626, 51.962],
+  ['Bocholt', 6.616, 51.838], ['Kleve', 6.139, 51.789], ['Arnheim', 5.911, 51.985], ['Krefeld', 6.587, 51.339], ['Venlo', 6.172, 51.37], ['Eindhoven', 5.469, 51.441, 1],
+  ['Köln', 6.958, 50.938], ['Mönchengladbach', 6.442, 51.192], ['Aachen', 6.084, 50.776], ['Enschede', 6.894, 52.221], ['Utrecht', 5.121, 52.091, 1]]; // 1 = keine Messung beim DWD // die letzten erst beim Herauszoomen sichtbar
+// Farben des Wetterdienstes (mm/h, schwach -> stark) und unsere eigenen dafür
+var DWD = [[51, 255, 255], [26, 204, 154], [1, 153, 52], [77, 179, 27], [153, 204, 1], [204, 230, 1], [255, 255, 1], [255, 196, 1], [255, 137, 1], [255, 69, 1], [254, 0, 0]];
+var EIGEN = [[110, 180, 255, 150], [80, 160, 255, 185], [50, 135, 255, 215], [40, 200, 235, 225], [60, 220, 150, 230], [170, 230, 70, 235], [255, 225, 50, 240],
+  [255, 175, 40, 245], [255, 125, 35, 245], [255, 70, 45, 250], [235, 30, 80, 250], [225, 40, 200, 255]]; // letzter Wert: alles über 45 mm/h
+var kcv = $('karte'), kx = kcv.getContext('2d'), geo = null;
+var radarBild = null, radarStand = 0, radarVersuch = 0, radarLaedt = false, radarFehler = 0, RADAR_SPEICHER = 'kw-radar'; // radarBild = { t: Zeitpunkt, cv: Bild }
+function merkX(lon) { return 6378137 * lon * Math.PI / 180; }
+function merkY(lat) { return 6378137 * Math.log(Math.tan(Math.PI / 4 + lat * Math.PI / 360)); }
+function kartePx(lon, lat) { return [(merkX(lon) - geo.minx) / geo.res, (geo.maxy - merkY(lat)) / geo.res]; }
+
+function geoRechnen() {
+  var b = kcv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  if (b.width < 10) return;
+  kcv.width = Math.round(b.width * dpr); kcv.height = Math.round(b.height * dpr);
+  var res = RADAR.km * 1000 / Math.cos(RADAR.lat * Math.PI / 180) / kcv.width, x = merkX(RADAR.lon), y = merkY(RADAR.lat);
+  geo = { w: kcv.width, h: kcv.height, res: res, minx: x - kcv.width / 2 * res, maxx: x + kcv.width / 2 * res,
+    miny: y - kcv.height / 2 * res, maxy: y + kcv.height / 2 * res, rem: window.innerHeight / 100 * dpr };
+}
+
+// Bild des Wetterdienstes in unsere Farben umfärben; „keine Daten“ und der Rand des Messgebiets fallen weg
+function stufeIndex(r, g, b) {
+  var best = EIGEN.length - 1, min = 3600; // weiter als 60 von jeder bekannten Farbe = stärkste Stufe
+  for (var i = 0; i < DWD.length; i++) {
+    var d = (r - DWD[i][0]) * (r - DWD[i][0]) + (g - DWD[i][1]) * (g - DWD[i][1]) + (b - DWD[i][2]) * (b - DWD[i][2]);
+    if (d < min) { min = d; best = i; }
+  }
+  return best;
+}
+function radarFarbe(r, g, b) { return EIGEN[stufeIndex(r, g, b)]; }
+// Störecho: Ein einzelnes nasses Kilometer-Kästchen ohne Nachbarn blinkt auch bei klarem Himmel auf (gemessen 14.11.2026 bei
+// Hamminkeln). Nass bleibt nur, wo im Umkreis von 1,5 km mehr als 1,5 km² nass sind (das Bild hat 4 Bildpunkte je Kilometer,
+// ein Kästchen also 16 Bildpunkte; zwei nebeneinander bleiben stehen).
+function entstoeren(nass, w, h) {
+  var W = w + 1, S = new Int32Array(W * (h + 1)), x, y, R = 6;
+  for (y = 0; y < h; y++) for (x = 0; x < w; x++) S[(y + 1) * W + x + 1] = nass[y * w + x] + S[y * W + x + 1] + S[(y + 1) * W + x] - S[y * W + x];
+  for (y = 0; y < h; y++) for (x = 0; x < w; x++) {
+    if (!nass[y * w + x]) continue;
+    var x0 = Math.max(0, x - R), y0 = Math.max(0, y - R), x1 = Math.min(w, x + R + 1), y1 = Math.min(h, y + R + 1);
+    if (S[y1 * W + x1] - S[y0 * W + x1] - S[y1 * W + x0] + S[y0 * W + x0] <= 24) nass[y * w + x] = 0;
+  }
+}
+function faerbe(img, w, h) {
+  var c = document.createElement('canvas'); c.width = w; c.height = h;
+  var x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h);
+  var bild = x.getImageData(0, 0, w, h), p = bild.data, nass = new Uint8Array(w * h);
+  for (var n = 0; n < nass.length; n++) nass[n] = p[n * 4 + 3] >= 250 ? 1 : 0;
+  entstoeren(nass, w, h);
+  for (var i = 0; i < p.length; i += 4) {
+    if (!nass[i >> 2]) { p[i + 3] = 0; continue; }
+    var f = radarFarbe(p[i], p[i + 1], p[i + 2]);
+    p[i] = f[0]; p[i + 1] = f[1]; p[i + 2] = f[2]; p[i + 3] = f[3];
+  }
+  x.putImageData(bild, 0, 0);
+  for (c.nass = 0, n = 0; n < nass.length; n++) c.nass += nass[n]; // 0 = im ganzen Bild kein Regen
+  return c;
+}
+
+function ring(c, r) { c.moveTo((merkX(r[0]) - geo.minx) / geo.res, (geo.maxy - merkY(r[1])) / geo.res);
+  for (var i = 2; i < r.length; i += 2) c.lineTo((merkX(r[i]) - geo.minx) / geo.res, (geo.maxy - merkY(r[i + 1])) / geo.res); }
+// Karte in drei Schichten: Grund (Hintergrund, Kreis) und Deckschicht (Grenzen, Namen) werden einmal gezeichnet und gemerkt,
+// dazwischen kommt das Regenbild. So kann die Bewegung jedes Bild neu setzen, ohne Grenzen und Schrift neu zu zeichnen.
+var kGrund = document.createElement('canvas'), kDeck = document.createElement('canvas'), radarEbene = null;
+function zeichneKarte() {
+  if (!geo) return;
+  var e = geo.rem, i, p;
+  kGrund.width = kDeck.width = geo.w; kGrund.height = kDeck.height = geo.h;
+  var g = kGrund.getContext('2d'), d = kDeck.getContext('2d');
+  g.fillStyle = 'rgba(3,7,20,.42)'; g.fillRect(0, 0, geo.w, geo.h);
+  // Kreis Wesel leicht aufgehellt
+  g.beginPath(); for (i = 0; i < GEBIET.kommunen.length; i++) ring(g, GEBIET.kommunen[i]);
+  g.fillStyle = 'rgba(255,255,255,.07)'; g.fill();
+  d.lineJoin = 'round';
+  d.beginPath(); for (i = 0; i < GEBIET.kreise.length; i++) ring(d, GEBIET.kreise[i]);
+  d.strokeStyle = 'rgba(255,255,255,.1)'; d.lineWidth = .14 * e; d.stroke();
+  d.beginPath(); for (i = 0; i < GEBIET.kommunen.length; i++) ring(d, GEBIET.kommunen[i]);
+  d.strokeStyle = 'rgba(255,255,255,.62)'; d.lineWidth = .2 * e; d.stroke();
+  // Grenzen laufen oben weich aus: nah herangezoomt liefen sie sonst quer durch „Live · Stand …“ und die Legende
+  var aus = d.createLinearGradient(0, 0, 0, 12 * e); aus.addColorStop(0, 'rgba(0,0,0,.9)'); aus.addColorStop(.5, 'rgba(0,0,0,.7)'); aus.addColorStop(1, 'rgba(0,0,0,0)');
+  d.globalCompositeOperation = 'destination-out'; d.fillStyle = aus; d.fillRect(0, 0, geo.w, 12 * e); d.globalCompositeOperation = 'source-over';
+  // Städte zur Orientierung
+  d.textBaseline = 'middle'; d.shadowColor = 'rgba(0,0,0,.7)'; d.shadowBlur = .8 * e;
+  d.font = '600 ' + (2.1 * e) + 'px Inter, sans-serif';
+  var belegt = [[ORTE[0], 1], [ORTE[1], 1], [ORTE[7], -1]].map(function (o) { // Platz der drei großen Namen
+    var q = kartePx(o[0][2], o[0][1]), b = 12 * e;
+    return [o[1] > 0 ? q[0] - 1.5 * e : q[0] - b, q[1] - 1.8 * e, o[1] > 0 ? q[0] + b : q[0] + 1.5 * e, q[1] + 1.8 * e];
+  });
+  // kein Name unter den Bedienknöpfen: Zoom und Ebenen unten links, Schalter Live/Bewegung unten rechts
+  belegt.push([0, geo.h - 21 * e, 9 * e, geo.h], [geo.w - 30 * e, geo.h - 8 * e, geo.w, geo.h]);
+  for (i = 0; i < STAEDTE.length; i++) {
+    p = kartePx(STAEDTE[i][1], STAEDTE[i][2]);
+    if (p[0] > geo.w - 13 * e || p[0] < 2 * e || p[1] < 11 * e || p[1] > geo.h - 3 * e) continue; // nicht unter dem Titel oder am Rand
+    var feld = [p[0] - e, p[1] - 1.3 * e, p[0] + 1.6 * e + d.measureText(STAEDTE[i][0]).width, p[1] + 1.3 * e];
+    if (belegt.some(function (b) { return feld[0] < b[2] && b[0] < feld[2] && feld[1] < b[3] && b[1] < feld[3]; })) continue; // würde einen anderen Namen überdecken
+    belegt.push(feld);
+    d.fillStyle = 'rgba(255,255,255,.8)'; d.beginPath(); d.arc(p[0], p[1], .38 * e, 0, 6.3); d.fill();
+    // dunkle Kontur um den Namen, damit die Grenzlinien nicht durch die Buchstaben laufen (wie bei Wesel, Dinslaken, Moers)
+    d.strokeStyle = 'rgba(5,10,28,.9)'; d.lineWidth = .55 * e; d.strokeText(STAEDTE[i][0], p[0] + .9 * e, p[1]);
+    d.fillText(STAEDTE[i][0], p[0] + .9 * e, p[1]);
+  }
+  // Wesel, Dinslaken und Moers hervorgehoben (Moers links beschriftet, rechts liegt Duisburg)
+  [[ORTE[0], 1, 1], [ORTE[1], 1, 0], [ORTE[7], -1, 0]].forEach(function (o) {
+    p = kartePx(o[0][2], o[0][1]);
+    d.fillStyle = '#fff'; d.beginPath(); d.arc(p[0], p[1], (o[2] ? .7 : .58) * e, 0, 6.3); d.fill();
+    d.strokeStyle = 'rgba(255,255,255,.45)'; d.lineWidth = .25 * e; d.beginPath(); d.arc(p[0], p[1], (o[2] ? 1.35 : 1.1) * e, 0, 6.3); d.stroke();
+    d.font = '700 ' + ((o[2] ? 3 : 2.5) * e) + 'px Inter, sans-serif'; d.textAlign = o[1] > 0 ? 'left' : 'right';
+    // dunkle Kontur, damit der Name nicht mit den Grenzlinien verschmilzt
+    d.strokeStyle = 'rgba(5,10,28,.85)'; d.lineWidth = .7 * e; d.strokeText(o[0][0], p[0] + o[1] * 2 * e, p[1]);
+    d.fillStyle = '#fff'; d.fillText(o[0][0], p[0] + o[1] * 2 * e, p[1]);
+  });
+  setzeKarte();
+}
+function setzeKarte() {
+  if (!geo) return;
+  kx.clearRect(0, 0, geo.w, geo.h);
+  kx.drawImage(kGrund, 0, 0);
+  var bild = mitRegen() ? radarEbene || (radarBild && radarBild.cv) : null;
+  if (bild) { // bewusst scharf (keine Weichzeichnung), die Kilometer-Kästchen sind als Treppen sichtbar
+    // Nach dem Zoomen liegt das alte Bild bis zum neuen an seiner echten Stelle (vergrößert/verkleinert), statt zu verschwinden
+    var r = radarBild && radarBild.box ? boxRect(radarBild.box) : [0, 0, geo.w, geo.h];
+    kx.imageSmoothingEnabled = true; kx.imageSmoothingQuality = 'high'; kx.globalAlpha = .92;
+    kx.drawImage(bild, r[0], r[1], r[2], r[3]); kx.globalAlpha = 1;
+  }
+  if (ebene === 'temp' && TFELD) { // Temperaturfläche: grobes Bild weich hochgerechnet, unter den Grenzen
+    kx.imageSmoothingEnabled = true; kx.imageSmoothingQuality = 'high'; kx.globalAlpha = .62;
+    kx.drawImage(tempBild(tempAnim ? tempZeit : Date.now()), 0, 0, geo.w, geo.h); kx.globalAlpha = 1;
+  }
+  if (ebene === 'wind' && WFELD && wRaster && wRaster.key.indexOf(radarBox()) === 0) { // Windstärke als Fläche, darüber die Linien
+    kx.imageSmoothingEnabled = true; kx.imageSmoothingQuality = 'high'; kx.globalAlpha = .55;
+    kx.drawImage(wCv, 0, 0, geo.w, geo.h); kx.globalAlpha = 1;
+    if (wSpur.width === geo.w) kx.drawImage(wSpur, 0, 0);
+  }
+  var e = ebeneDaten[ebene];
+  if (EBENEN[ebene].wms && e && e.box === radarBox()) { // Blitze über dem Regen, Warnfarben halb durchsichtig unter den Grenzen
+    kx.globalAlpha = ebene === 'warnung' ? .55 : 1; kx.drawImage(e.cv, 0, 0, geo.w, geo.h); kx.globalAlpha = 1;
+  }
+  kx.drawImage(kDeck, 0, 0);
+  if (ebene === 'wind' || ebene === 'temp') ortsWerte();
+}
+
+// Holt das aktuelle Radarbild (der Wetterdienst liefert alle 5 Minuten ein neues)
+function ladeRadar() {
+  if (radarLaedt || !geo) return;
+  radarLaedt = true; radarVersuch = Date.now();
+  var t = radarZeit(Date.now()), fertig = false;
+  var rw = Math.round(RADAR.km * 4), rh = Math.round(rw * geo.h / geo.w); // 4 Bildpunkte je Kilometer
+  var bbox = radarBox();
+  function abschluss(neu) { // ohne neues Bild bleibt das alte stehen
+    if (fertig) return;
+    fertig = true; radarLaedt = false;
+    if (neu) {
+      if (radarBild) frei(radarBild.cv);
+      if (FILM && (FILM.t !== neu.t || FILM.box !== bbox)) { FILM.bilder.slice(1).forEach(frei); FILM = null; radarEbene = null; } // der Film gehört zum alten Bild
+      neu.box = bbox; radarBild = neu; radarStand = Date.now(); radarFehler = 0;
+      // fürs nächste Laden der Seite merken, dann ist das Radar sofort da
+      try { localStorage.setItem(RADAR_SPEICHER, JSON.stringify({ t: neu.t, s: radarStand, box: bbox, u: neu.cv.toDataURL() })); } catch (e) {}
+    } else radarFehler++;
+    radarZeigen();
+  }
+  var img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = function () { try { abschluss({ t: t, cv: faerbe(img, rw, rh) }); } catch (e) { console.error('Radarbild nicht lesbar', e); abschluss(null); } };
+  img.onerror = function () { abschluss(null); };
+  img.src = WMS + '&bbox=' + bbox + '&width=' + rw + '&height=' + rh + '&time=' + new Date(t).toISOString();
+  setTimeout(function () { abschluss(null); }, 15000); // nicht ewig warten, lieber gleich neu versuchen
+}
+// Zeit des neuesten Radarbilds, das der Wetterdienst schon hat. Gemessen (12.11.2026): Das Bild einer 5-Minuten-Marke
+// erscheint erst rund 4 Minuten danach; vorher liefert der Dienst unter der neuen Zeit noch das alte Bild. Darum 4:45 min Abstand,
+// sonst stünde eine zu neue Uhrzeit am Bild.
+function radarZeit(ms) { return Math.floor((ms - 285000) / 300000) * 300000; }
+function radarBox() { return [geo.minx, geo.miny, geo.maxx, geo.maxy].map(Math.round).join(','); }
+function boxRect(box) { // Ausschnitt (minx,miny,maxx,maxy in Metern) -> [x, y, Breite, Höhe] auf der Karte
+  var b = box.split(',').map(Number);
+  return [(b[0] - geo.minx) / geo.res, (geo.maxy - b[3]) / geo.res, (b[2] - b[0]) / geo.res, (b[3] - b[1]) / geo.res];
+}
+function zoomSetzen(i) {
+  i = grenze(i, 0, ZOOM.length - 1);
+  [].forEach.call(document.querySelectorAll('#rzoom button'), function (b) { // am Ende der Stufen ausgegraut (Fokus bleibt drauf)
+    b.setAttribute('aria-disabled', String(+b.getAttribute('data-zoom') < 0 ? i === 0 : i === ZOOM.length - 1));
+  });
+  if (i === zoomNr && geo && RADAR.km === ZOOM[i]) return;
+  zoomNr = i; RADAR.km = ZOOM[i];
+  try { localStorage.setItem('kw-radar-zoom', String(i)); } catch (e) {}
+  if (!geo) return;
+  geoRechnen();
+  // Film und Zugrichtung gehören zum alten Ausschnitt: verwerfen, neues Radarbild sofort holen (Film und Prognose folgen darauf)
+  if (FILM) { FILM.bilder.slice(1).forEach(frei); FILM = null; }
+  radarEbene = null; PROG = null; progVersuch = 0; filmVersuch = 0; radarVersuch = 0;
+  zeichneKarte(); progZeigen(); radarKopf();
+}
+// Wartezeit bis zum nächsten Radar-Versuch: nach Fehlern 5 s, 10 s, 20 s … höchstens 2 min; ist ein neueres Bild fällig,
+// nach 30 s; sonst spätestens alle 5 min
+function radarWarte(fehler, faellig) {
+  if (fehler) return Math.min(5000 * Math.pow(2, fehler - 1), 120000);
+  return faellig ? 30000 : RADAR.takt;
+}
+// Beim Start das zuletzt gespeicherte Bild zeigen (gleicher Ausschnitt, höchstens 3 h alt), bis das neue da ist
+function radarAusSpeicher() {
+  try {
+    var r = JSON.parse(localStorage.getItem(RADAR_SPEICHER));
+    if (!r || !geo || r.box !== radarBox() || Date.now() - r.s > WEGWERFEN) return;
+    var img = new Image();
+    img.onload = function () {
+      if (radarBild) return; // inzwischen schon ein frisches Bild da
+      var c = document.createElement('canvas'); c.width = img.width; c.height = img.height; c.getContext('2d').drawImage(img, 0, 0);
+      radarBild = { t: r.t, cv: c, box: r.box }; radarStand = r.s; radarZeigen();
+    };
+    img.src = r.u;
+  } catch (e) {}
+}
+
+function radarZeigen() { zeichneKarte(); radarKopf(); }
+function kopfSetzen(text, cls, uhr) { // nur ändern, was sich ändert (die Bewegung ruft das in jedem Bild auf)
+  var a = $('rwann'), b = $('ruhr');
+  if (a.textContent !== text) a.textContent = text;
+  if (a.className !== cls) a.className = cls;
+  if (b.textContent !== uhr) b.textContent = uhr;
+}
+function radarKopf() {
+  var alt = Date.now() - radarStand > 20 * 60 * 1000, k = alt && radarBild && mitRegen() ? 'alt' : '';
+  if ($('rkopf').className !== k) $('rkopf').className = k;
+  if (!mitRegen()) { // Warnungen, Wind, Temperatur: Stand der jeweiligen Daten
+    var st = ebene === 'warnung' ? ebeneDaten.warnung && ebeneDaten.warnung.geholt : geholt;
+    if ((ebene === 'temp' && !TFELD) || (ebene === 'wind' && !WFELD)) st = 0; // Fläche fehlt noch: „lädt …“ statt stehender Zahlen ohne Hinweis
+    kopfSetzen(st ? 'Live' : 'lädt …', st ? 'live' : '', st ? 'Stand ' + hhmm(new Date(st)) + ' Uhr' : '');
+    return;
+  }
+  // „Keine Verbindung“ erst nach mehreren Fehlschlägen, ein einzelner langsamer Abruf zeigt weiter „lädt …“
+  // oder wenn nach einer Minute noch nie ein Bild kam (offline hängt ein Abruf sonst ewig im „lädt …“)
+  if (!radarBild) { kopfSetzen(radarFehler >= 3 || Date.now() - seitenStart > 60000 ? 'Keine Verbindung' : 'lädt …', '', ''); return; }
+  kopfSetzen(alt ? 'Radar veraltet' : 'Live', alt ? '' : 'live', 'Stand ' + hhmm(new Date(radarBild.t)) + ' Uhr');
+}
+
+/* ---------- Kartenebenen: Regen, Blitze, Warnungen, Wind, Temperatur ---------- */
+// Blitze und Warnungen kommen als Bild vom Wetterdienst (gleicher Kartendienst wie das Radar), Wind und Temperatur
+// zeichnen wir selbst an die Orte (DWD-Werte über Bright Sky).
+var SYM = {
+  regen: '<path d="M12 3c3.6 4.7 6 8 6 11a6 6 0 0 1-12 0c0-3 2.4-6.3 6-11z"/>',
+  blitze: '<path d="M13.5 2 5 13.5h6.2L10 22l9-12.2h-6.3z"/>',
+  warnung: '<path d="M12 3.5 2.5 20h19z"/><path d="M12 10v4.6"/><path d="M12 17.4v.2"/>',
+  wind: '<path d="M3 8.5h11a3 3 0 1 0-3-3"/><path d="M3 12.5h15.5a3 3 0 1 1-3 3"/><path d="M3 16.5h6"/>',
+  temp: '<path d="M10 14.3V5a2 2 0 0 1 4 0v9.3a4 4 0 1 1-4 0z"/><path d="M12 9.5v6.5"/>'
+};
+var EBENEN = {
+  regen: { titel: 'Regenradar', legende: 'leicht<i></i>stark' },
+  blitze: { titel: 'Blitze', wms: 'Blitzdichte', legende: 'Blitze der letzten 5 Minuten' },
+  warnung: { titel: 'Warnungen', wms: 'Warnungen_Gemeinden',
+    legende: 'Stufe<b style="background:#ffeb3b"></b><b style="background:#fb8c00"></b><b style="background:#e53935"></b><b style="background:#880e4f"></b>' },
+  wind: { titel: 'Wind', legende: 'Wind in km/h' },
+  temp: { titel: 'Temperatur', legende: '' } // Legende mit Farbverlauf: siehe unten bei T_STUFEN
+};
+var ebene = 'regen', ebeneDaten = {}; // ebeneDaten[name] = { cv, box, geholt, versuch, leer }
+try { var gemerkteEbene = localStorage.getItem('kw-radar-ebene'); if (EBENEN[gemerkteEbene]) ebene = gemerkteEbene; } catch (e) {}
+if (EBENEN[probe('ebene')]) ebene = probe('ebene');
+function mitRegen() { return ebene === 'regen' || ebene === 'blitze'; }
+
+// Bild einer Ebene vom Wetterdienst holen (immer das aktuelle). Blitze werden in hellem Gelb nachgezeichnet, damit sie auf dem Regen leuchten.
+function ladeEbene(name) {
+  if (!geo) return;
+  var d = ebeneDaten[name] || (ebeneDaten[name] = {}), box = radarBox(), w = Math.min(geo.w, 1600), h = Math.round(w * geo.h / geo.w);
+  if (d.laedt) return;
+  d.laedt = true; d.versuch = Date.now();
+  var img = new Image(), aus = false;
+  function ende(cv, leer) {
+    if (aus) return; aus = true; d.laedt = false;
+    if (cv) { frei(d.cv); d.cv = cv; d.box = box; d.geholt = Date.now(); d.leer = leer; }
+    if (name === ebene) { setzeKarte(); radarKopf(); legendeZeigen(); }
+  }
+  img.crossOrigin = 'anonymous';
+  img.onload = function () {
+    try {
+      var c = document.createElement('canvas'); c.width = w; c.height = h;
+      var x = c.getContext('2d'), n = 0; x.drawImage(img, 0, 0, w, h);
+      if (name === 'blitze') {
+        var b = x.getImageData(0, 0, w, h), p = b.data;
+        for (var i = 0; i < p.length; i += 4) if (p[i + 3] > 0) { n++; p[i] = 255; p[i + 1] = 236; p[i + 2] = 110; p[i + 3] = Math.max(p[i + 3], 220); }
+        x.putImageData(b, 0, 0);
+        if (n) { x.globalCompositeOperation = 'destination-over'; x.filter = 'blur(' + Math.round(w / 300) + 'px)'; x.drawImage(c, 0, 0); } // weicher Schein
+      }
+      ende(c, name === 'blitze' && n === 0);
+    } catch (e) { ende(null); }
+  };
+  img.onerror = function () { ende(null); };
+  img.src = WMS.replace('dwd:Niederschlagsradar', 'dwd:' + EBENEN[name].wms) + '&bbox=' + box + '&width=' + w + '&height=' + h + '&_=' + Math.floor(Date.now() / 300000);
+  setTimeout(function () { ende(null); }, 20000);
+}
+
+// Wind und Temperatur als Werte an den beschrifteten Orten der Karte (Wesel, Dinslaken, Moers und die Städte ringsum),
+// je unter dem Ortspunkt. Alle 13 Kreis-Orte wären auf dieser Kartengröße zu eng; die stehen ohnehin rechts in der Liste.
+// Werte für die Städte ringsum: aktuelle DWD-Messung der nächsten Station (Bright Sky), nur solange Wind oder Temperatur gewählt ist.
+var stadtWerte = null, stadtGeholt = 0, stadtVersuch = 0;
+function ladeStadtWerte() {
+  stadtVersuch = Date.now();
+  Promise.all(STAEDTE.map(function (s) {
+    if (s[3]) return { current: null }; // gibt es beim DWD nicht (Bright Sky antwortet 404)
+    return bsHolen('current_weather?lat=' + s[2] + '&lon=' + s[1]).then(function (j) {
+      var w = j.weather || {}, nahT = stationKm(j, 'temperature', s[2], s[1]) <= NAH, nahW = stationKm(j, 'wind_speed_10', s[2], s[1]) <= NAH;
+      // Messung nur zeigen, wenn die Station nah ist; jede Messung hilft aber, die Temperaturfläche anzugleichen (station)
+      return { current: { temperature_2m: nahT ? w.temperature : null, wind_speed_10m: nahW ? w.wind_speed_10 : null, wind_direction_10m: w.wind_direction_10 },
+        station: tempStation(j), windStation: windStation(j) };
+    }, function () { return { current: null }; }); // eine fehlende Stadt bleibt einfach leer
+  })).then(function (l) {
+    if (l.some(function (x) { return x.current; })) { stadtWerte = l; stadtGeholt = Date.now(); if (!mitRegen()) setzeKarte(); }
+  });
+}
+function tempFarbe(t) { return t < 0 ? '#9fd4ff' : t < 10 ? '#e6f1ff' : t < 20 ? '#ffe08a' : t < 28 ? '#ffb86b' : '#ff7a59'; }
+function ortsWerte() {
+  var e = geo.rem, i, c, p, txt, punkte = [], belegt = [];
+  if (daten) [0, 1, 7].forEach(function (k) { if (daten[k]) punkte.push([ORTE[k][2], ORTE[k][1], daten[k].current]); });
+  if (stadtWerte) STAEDTE.forEach(function (s, k) { punkte.push([s[1], s[2], stadtWerte[k].current]); });
+  kx.textAlign = 'center'; kx.textBaseline = 'middle'; kx.font = '700 ' + (2.3 * e) + 'px Inter, sans-serif';
+  for (i = 0; i < punkte.length; i++) {
+    c = punkte[i][2]; p = kartePx(punkte[i][0], punkte[i][1]);
+    // In der Bewegung zeigt jeder Ort den Wert der gerade gezeigten Uhrzeit (aus der Temperaturfläche), sonst die Messung jetzt
+    // Ohne Messung (z. B. Niederlande) gilt die Fläche jetzt
+    if (ebene === 'temp' && TFELD && (tempAnim || !c || typeof c.temperature_2m !== 'number')) {
+      var zt = tempAnim ? tempZeit : Date.now();
+      c = { temperature_2m: feldZeit(punkte[i][0], punkte[i][1], zt) + tempVersatz(zt, punkte[i][0], punkte[i][1]) };
+    }
+    if (ebene === 'wind' && WFELD && (tempAnim || !c || typeof c.wind_speed_10m !== 'number' || c.wind_km > NAH)) { // ebenso beim Wind (Modell)
+      var wa = windAn(punkte[i][0], punkte[i][1], tempAnim ? tempZeit : Date.now());
+      c = { wind_speed_10m: wa.kmh, wind_direction_10m: wa.von };
+    }
+    if (!c || typeof (ebene === 'temp' ? c.temperature_2m : c.wind_speed_10m) !== 'number') continue;
+    if (p[0] > geo.w - 6 * e || p[0] < 4 * e || p[1] < 11 * e || p[1] > geo.h - 9 * e) continue; // nicht am Rand, unter dem Titel oder bei den Knöpfen
+    txt = ebene === 'temp' ? grad(c.temperature_2m, 0) : String(Math.round(c.wind_speed_10m || 0));
+    var w = kx.measureText(txt).width + (ebene === 'wind' ? 3.4 * e : 1.6 * e), y = p[1] + 2.6 * e;
+    // Beim Herauszoomen liegen Orte dicht: überlappende Werte weglassen (Wesel, Dinslaken, Moers kommen zuerst)
+    var feld = [p[0] - w / 2 - .3 * e, y - 1.9 * e, p[0] + w / 2 + .3 * e, y + 1.9 * e];
+    if (belegt.some(function (b) { return feld[0] < b[2] && b[0] < feld[2] && feld[1] < b[3] && b[1] < feld[3]; })) continue;
+    belegt.push(feld);
+    kx.fillStyle = 'rgba(8,12,28,.78)'; kx.beginPath();
+    if (kx.roundRect) kx.roundRect(p[0] - w / 2, y - 1.6 * e, w, 3.2 * e, 1.6 * e); else kx.rect(p[0] - w / 2, y - 1.6 * e, w, 3.2 * e);
+    kx.fill();
+    if (ebene === 'wind') { // Pfeil zeigt, wohin der Wind weht (Wetterdienst gibt an, woher er kommt)
+      kx.save(); kx.translate(p[0] - w / 2 + 1.7 * e, y); kx.rotate(((c.wind_direction_10m || 0) + 180) * Math.PI / 180);
+      kx.fillStyle = '#fff'; kx.beginPath(); kx.moveTo(0, -1.1 * e); kx.lineTo(.75 * e, .55 * e); kx.lineTo(0, .2 * e); kx.lineTo(-.75 * e, .55 * e); kx.closePath(); kx.fill();
+      kx.restore();
+      kx.fillStyle = '#fff'; kx.fillText(txt, p[0] + .9 * e, y);
+    } else { kx.fillStyle = tempFarbe(c.temperature_2m); kx.fillText(txt, p[0], y); }
+  }
+  kx.textAlign = 'left';
+}
+
+/* ---------- Temperatur als Fläche: ICON-EU des Wetterdienstes (2 m, ca. 7 km Gitter, stündlich), Werte als Zahlen über WCS ---------- */
+var WCS = 'https://maps.dwd.de/geoserver/dwd/wcs?service=WCS&version=2.0.1&request=GetCoverage&format=text/plain&coverageId=';
+var T_WCS = WCS + 'dwd__Icon-eu_reg00625_fd_gl_T&subset=elevation(2)';
+// Wind 10 m aus ICON (global, 0,25° ≈ 28 km – Wind ändert sich großräumig): Band 0 = nach Osten, Band 1 = nach Norden, in m/s
+var W_WCS = WCS + 'dwd__Icon_reg025_fd_sl_UV10M&subset=elevation(10)';
+var T_BOX = [4.0, 50.4, 9.2, 52.9];  // lon/lat-Ausschnitt, deckt auch die weiteste Zoomstufe
+var T_STD = 24;                      // Bewegung: von jetzt bis 24 Stunden voraus
+var T_STUFEN = [[-15, [111, 45, 189]], [-5, [58, 111, 224]], [0, [88, 182, 240]], [5, [94, 214, 196]], [10, [143, 220, 106]],
+  [15, [230, 216, 74]], [20, [246, 169, 59]], [25, [242, 112, 58]], [30, [217, 58, 58]], [38, [163, 21, 90]]];
+function tFarbe(v, s) {
+  s = s || T_STUFEN; var i = 1;
+  if (v <= s[0][0]) return s[0][1];
+  while (i < s.length - 1 && v > s[i][0]) i++;
+  var k = grenze((v - s[i - 1][0]) / (s[i][0] - s[i - 1][0]), 0, 1);
+  return [0, 1, 2].map(function (n) { return Math.round(s[i - 1][1][n] + (s[i][1][n] - s[i - 1][1][n]) * k); });
+}
+var T_LUT = []; for (var tl = 0; tl <= 240; tl++) T_LUT.push(tFarbe(-20 + tl / 4)); // −20 … +40 °C in Viertelgrad
+EBENEN.temp.legende = '−10°<i style="background:linear-gradient(90deg,' + [-10, -5, 0, 5, 10, 15, 20, 25, 30].map(function (v) { return 'rgb(' + tFarbe(v).join(',') + ')'; }).join(',') + ')"></i>30°';
+
+// Windstärke in km/h: ruhiges Blau bei Flaute, über Grün und Gelb zu Rot und Lila bei Sturm
+var W_STUFEN = [[0, [38, 64, 110]], [10, [44, 112, 168]], [20, [42, 165, 160]], [30, [110, 196, 90]], [45, [230, 208, 70]],
+  [60, [245, 150, 50]], [80, [228, 66, 58]], [110, [168, 38, 140]]];
+var W_LUT = []; for (tl = 0; tl <= 240; tl++) W_LUT.push(tFarbe(tl / 2, W_STUFEN)); // 0 … 120 km/h in halben Schritten
+EBENEN.wind.legende = '0<i style="background:linear-gradient(90deg,' + [0, 10, 20, 30, 45, 60, 80].map(function (v) { return 'rgb(' + tFarbe(v, W_STUFEN).join(',') + ')'; }).join(',') + ')"></i>80 km/h';
+
+// Antwort des WCS als Text: Kopf mit „GeneralBounds[(lonMin, latMin), (lonMax, latMax)]“, danach je Band „Band n:“ und Zeilen von Nord nach Süd
+function wcsLesen(txt, band) {
+  band = band || 0;
+  var m = /GeneralBounds\[\(([-\d.]+), ([-\d.]+)\), \(([-\d.]+), ([-\d.]+)\)\]/.exec(txt), i = txt.indexOf('Band ' + band + ':');
+  if (!m || i < 0) return null;
+  var j = txt.indexOf('Band ' + (band + 1) + ':', i);
+  var z = txt.slice(i + 7, j < 0 ? txt.length : j).trim().split(/\s*\n\s*/).map(function (l) { return l.split(/\s+/).map(Number); });
+  var h = z.length, w = z[0].length, werte = new Float32Array(w * h);
+  if (w < 2 || h < 2) return null;
+  for (var y = 0; y < h; y++) {
+    if (z[y].length !== w) return null;
+    for (var x = 0; x < w; x++) { if (!(z[y][x] > -80 && z[y][x] < 70)) return null; werte[y * w + x] = z[y][x]; } // nie halbe oder kaputte Daten
+  }
+  return { lon0: +m[1], lat1: +m[4], dx: (m[3] - m[1]) / w, dy: (m[4] - m[2]) / h, w: w, h: h, werte: werte };
+}
+function feldAn(f, lon, lat) { // weich (bilinear) zwischen den Gitterpunkten, am Rand der letzte Wert
+  var x = grenze((lon - f.lon0) / f.dx - .5, 0, f.w - 1), y = grenze((f.lat1 - lat) / f.dy - .5, 0, f.h - 1);
+  var x0 = Math.min(f.w - 2, x | 0), y0 = Math.min(f.h - 2, y | 0), u = x - x0, v = y - y0, W = f.werte, i = y0 * f.w + x0;
+  return (W[i] * (1 - u) + W[i + 1] * u) * (1 - v) + (W[i + f.w] * (1 - u) + W[i + f.w + 1] * u) * v;
+}
+var TFELD = null, tLaedt = false, tVersuch = 0, tempAnim = false, tempZeit = 0, tRaster = null, tCv = document.createElement('canvas');
+// Holt eine Fläche für jetzt und die nächsten 24 Stunden; lesen(text) macht daraus eine Stunde (null = unbrauchbar).
+// fertig(feld, ganz) kommt zweimal: sobald jetzt + nächste Stunde da sind (Live-Bild nach ca. 1 s), und am Ende mit allen Stunden.
+function ladeFeld(url, lesen, fertig) {
+  var t0 = Math.floor(Date.now() / 36e5) * 36e5, box = '&subset=Lat(' + T_BOX[1] + ',' + T_BOX[3] + ')&subset=Long(' + T_BOX[0] + ',' + T_BOX[2] + ')';
+  var l = [], naechste = 0, offen = T_STD + 1, vorab = false;
+  function eins() { // höchstens 4 Abrufe gleichzeitig (25 auf einmal lässt der Dienst teils hängen)
+    var k = naechste++;
+    if (k > T_STD) return;
+    var ab = window.AbortController ? new AbortController() : null, zu = setTimeout(function () { if (ab) ab.abort(); }, 30000);
+    fetch(url + box + '&subset=time(' + encodeURIComponent('"' + new Date(t0 + k * 36e5).toISOString() + '"') + ')', ab ? { signal: ab.signal } : {})
+      .then(function (r) { return r.ok ? r.text() : null; }).then(function (t) { return t && lesen(t); }, function () { return null; })
+      .then(function (f) {
+        clearTimeout(zu); l[k] = f;
+        if (--offen === 0) { var n = 0; while (n < l.length && l[n]) n++; fertig(n < 2 ? null : { t0: t0, stunden: l.slice(0, n), geholt: Date.now() }, true); } // nur lückenlos ab jetzt
+        else {
+          if (!vorab && l[0] && l[1]) { vorab = true; fertig({ t0: t0, stunden: [l[0], l[1]], geholt: Date.now() }, false); }
+          eins();
+        }
+      });
+  }
+  for (var i = 0; i < 4; i++) eins();
+}
+function ladeTempFeld() {
+  if (tLaedt) return;
+  tLaedt = true; tVersuch = Date.now();
+  ladeFeld(T_WCS, function (t) { return wcsLesen(t, 0); }, function (f, ganz) {
+    if (ganz) tLaedt = false;
+    if (!f) return console.error('Temperaturfläche nicht geladen'); // ein schon gezeigter Teil bleibt stehen
+    TFELD = f; tRaster = null;
+    if (ebene === 'temp') { setzeKarte(); radarKopf(); }
+  });
+}
+function feldZeit(lon, lat, t) { // Wert an einem Ort zu einer Zeit, zwischen den Stunden weich
+  var s = TFELD.stunden, k = grenze((t - TFELD.t0) / 36e5, 0, s.length - 1), k0 = Math.min(s.length - 2, k | 0), u = k - k0;
+  return feldAn(s[k0], lon, lat) * (1 - u) + feldAn(s[k0 + 1], lon, lat) * u;
+}
+// Modell an Punktvorhersage und Messung angleichen, für jede Stunde der Fläche und je Stelle (Abweichung nach Entfernung gewichtet, 1/d²).
+// An den 13 Orten gilt die DWD-Punktvorhersage (MOSMIX) der jeweiligen Stunde – an Messungen geeicht, genauer als das reine Modell –
+// plus ihr aktueller Fehler an den Messstationen (klingt über 12 Stunden aus). Dazu die Messstationen der Städte, ebenfalls ausklingend.
+// Ein Mittelwert reichte nicht: früh am 13.11. war ICON an allen Stationen 1–2 Grad zu warm, die 13 Orte (MOSMIX) aber kaum.
+// Feste Punktliste P (erst die 13 Orte, dann Stationen) und je Stunde ein Wert je Punkt (NaN = fehlt): so werden die Gewichte
+// je Kartenstelle nur einmal gerechnet, nicht für jede Stunde neu (auf dem Stick sonst 2 s Rechnen bei jedem neuen Datenstand).
+var tAbw = { key: '' };
+function ausklingen(t) { return grenze(1 - (t - Date.now()) / (12 * 36e5), 0, 1); }
+function gewichte(P, lon, lat) {
+  var g = new Float64Array(P.length);
+  for (var i = 0; i < P.length; i++) { var d = Math.max(1, kmZwischen(lat, lon, P[i][1], P[i][0])); g[i] = 1 / (d * d); }
+  return g;
+}
+// anker (km): zusätzlicher Punkt mit Abweichung 0 in dieser Entfernung – fern von allen Punkten läuft die Korrektur so aus.
+// Temperatur: 15 km war in der Kreuzprobe am 13.11. (jede Station einmal weggelassen) am besten: 0,75° Fehler statt 0,94° ohne Anker, Modell roh 1,18°.
+// shortcut: nur an einem Abend geprüft; bei Gelegenheit über mehrere Tage nachmessen
+var T_ANKER = 15;
+function mischen(g, w, anker) { // gewichtetes Mittel der vorhandenen Werte, 0 ohne Werte
+  var sw = anker ? 1 / (anker * anker) : 0, sb = 0;
+  for (var i = 0; i < g.length; i++) if (w[i] === w[i]) { sw += g[i]; sb += g[i] * w[i]; }
+  return sw ? sb / sw : 0;
+}
+function leer(n) { var a = new Float64Array(n); a.fill(NaN); return a; }
+function tempAbweichungen() {
+  var key = geholt + '|' + stadtGeholt + '|' + TFELD.t0 + '|' + TFELD.stunden.length;
+  if (tAbw.key === key) return tAbw;
+  var jetzt = Date.now(), P = ORTE.map(function (o) { return [o[2], o[1]]; }), st = [], ids = {};
+  if (stadtWerte) stadtWerte.forEach(function (s) {
+    var x = s.station;
+    if (x && !ids[x.id] && jetzt - x.zeit < 54e5) { ids[x.id] = 1; P.push([x.lon, x.lat]); st.push(grenze(x.messung - feldZeit(x.lon, x.lat, x.zeit), -4, 4)); }
+  });
+  var W = TFELD.stunden.map(function (f, k) {
+    var tk = TFELD.t0 + k * 36e5, aus = ausklingen(tk), w = leer(P.length);
+    if (daten) daten.forEach(function (o, i) {
+      var lon = P[i][0], lat = P[i][1], c = o.current, m = mosAn(o.mos, tk, 1);
+      var korr = typeof c.temperature_2m === 'number' && typeof c.vorhersage === 'number' ? c.temperature_2m - c.vorhersage : 0;
+      if (m != null) w[i] = grenze(m + korr * aus - feldAn(f, lon, lat), -6, 6);
+      else if (typeof c.temperature_2m === 'number') w[i] = grenze(c.temperature_2m - feldZeit(lon, lat, jetzt), -4, 4) * aus;
+    });
+    st.forEach(function (d, j) { w[ORTE.length + j] = d * aus; });
+    return w;
+  });
+  tAbw = { key: key, P: P, W: W };
+  return tAbw;
+}
+function tempVersatz(t, lon, lat) {
+  if (!TFELD || TFELD.stunden.length < 2) return 0;
+  var A = tempAbweichungen(), g = gewichte(A.P, lon, lat), n = A.W.length, k = grenze((t - TFELD.t0) / 36e5, 0, n - 1), k0 = Math.min(n - 2, k | 0), u = k - k0;
+  return mischen(g, A.W[k0], T_ANKER) * (1 - u) + mischen(g, A.W[k0 + 1], T_ANKER) * u;
+}
+// Für jeden (groben) Kartenpunkt die Werte aller Stunden vorrechnen; danach kostet ein Bild nur noch Mischen und Färben
+function tempBild(t) {
+  var sw = Math.ceil(geo.w / 8), sh = Math.ceil(geo.h / 8), abw = tempAbweichungen(), k, i, j;
+  var key = radarBox() + '|' + TFELD.t0 + '|' + TFELD.stunden.length + '|' + tAbw.key;
+  if (!tRaster || tRaster.key !== key) {
+    var s = TFELD.stunden, werte = s.map(function () { return new Float32Array(sw * sh); });
+    for (j = 0; j < sh; j++) for (i = 0; i < sw; i++) {
+      var lon = (geo.minx + (i + .5) * geo.w / sw * geo.res) / 6378137 * 180 / Math.PI;
+      var lat = (2 * Math.atan(Math.exp((geo.maxy - (j + .5) * geo.h / sh * geo.res) / 6378137)) - Math.PI / 2) * 180 / Math.PI;
+      var g = gewichte(abw.P, lon, lat);
+      for (k = 0; k < s.length; k++) werte[k][j * sw + i] = feldAn(s[k], lon, lat) + mischen(g, abw.W[k], T_ANKER); // schon angeglichen
+    }
+    tCv.width = sw; tCv.height = sh;
+    tRaster = { key: key, sw: sw, sh: sh, werte: werte, img: tCv.getContext('2d').createImageData(sw, sh) };
+  }
+  var R = tRaster, n = R.werte.length, kk = grenze((t - TFELD.t0) / 36e5, 0, n - 1), k0 = Math.min(n - 2, kk | 0), u = kk - k0;
+  var A = R.werte[k0], B = R.werte[k0 + 1], d = R.img.data;
+  for (i = 0; i < A.length; i++) {
+    var c = T_LUT[grenze(Math.round((A[i] + (B[i] - A[i]) * u + 20) * 4), 0, 240)];
+    d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255;
+  }
+  tCv.getContext('2d').putImageData(R.img, 0, 0);
+  return tCv;
+}
+// Bewegung der Temperatur: gleicher Takt wie beim Radar, aber durch die nächsten 24 Stunden
+var T_LAUF = 24000; // 24 Stunden in 24 s: eine Sekunde je Stunde (12 s war Jakob zu schnell)
+// Zeitablauf für Temperatur und Wind: null = Live-Phase (bei „Beides“ die ersten 5 s), sonst gezeigter Zeitpunkt; setzt Kopf und Zeitleiste
+function feldZyklus(t, F) {
+  var steht = modus === 'beides' ? F_STEHT : 0, zyklus = steht + T_LAUF + F_ENDE + F_ZURUECK, c = ((t - filmStart) % zyklus + zyklus) % zyklus;
+  if (c < steht) return null;
+  c -= steht;
+  var jetzt = Date.now(), ende = F.t0 + (F.stunden.length - 1) * 36e5;
+  var p = c < T_LAUF ? glatt(c / T_LAUF) : c < T_LAUF + F_ENDE ? 1 : 1 - glatt((c - T_LAUF - F_ENDE) / F_ZURUECK);
+  var z = jetzt + p * Math.max(0, ende - jetzt), volle = Math.round(z / 36e5) * 36e5; // volle Stunde (deutsche Zeit liegt ganze Stunden neben Weltzeit)
+  kopfSetzen(modus === 'bewegung' ? 'Bewegung' : 'Vorhersage', 'vorher', (datumHeute(volle) === datumHeute(jetzt) ? '' : 'Morgen ') + hhmm(volle) + ' Uhr');
+  filmLeiste(p);
+  return z;
+}
+// tempAnim/tempZeit gelten für die gerade gezeigte Fläche (Temperatur oder Wind)
+function tempFilm(t) {
+  if (!filmAn || !TFELD || !geo) { if (tempAnim) filmStill(); return; }
+  if (t - filmZuletzt < (document.body.classList.contains('sparsam') ? 58 : 28)) return;
+  filmZuletzt = t;
+  var z = feldZyklus(t, TFELD);
+  if (z == null) { if (tempAnim) filmStill(); return; }
+  tempAnim = true; tempZeit = z; setzeKarte();
+}
+
+/* ---------- Wind: strömende Linien über einer Fläche der Windstärke (wie Windy), auch durch die nächsten 24 Stunden ---------- */
+var WFELD = null, wLaedt = false, wVersuch = 0, wRaster = null, wCv = document.createElement('canvas'), wSpur = document.createElement('canvas'), wTeile = null, wZuletzt = 0;
+function ladeWindFeld() {
+  if (wLaedt) return;
+  wLaedt = true; wVersuch = Date.now();
+  ladeFeld(W_WCS, function (t) { var u = wcsLesen(t, 0), v = wcsLesen(t, 1); return u && v ? [u, v] : null; }, function (f, ganz) {
+    if (ganz) wLaedt = false;
+    if (!f) return console.error('Windfläche nicht geladen'); // ein schon gezeigter Teil bleibt stehen
+    WFELD = f; wRaster = null;
+    if (ebene === 'wind') radarKopf();
+  });
+}
+// Das Windmodell auf der Schnittstelle ist grob (ICON global, ca. 28 km). Darum wie bei der Temperatur angleichen, je Stunde und je Stelle
+// (1/d², als Pfeil in m/s, damit Stärke und Richtung stimmen): an den 13 Orten an die DWD-Punktvorhersage (MOSMIX) der Stunde,
+// an den Wind-Messstationen an die Messung (klingt über 12 Stunden aus). Höchstens ±15 m/s je Punkt.
+var wAbw = { key: '' };
+function windAbweichungen() {
+  var key = geholt + '|' + stadtGeholt + '|' + WFELD.t0 + '|' + WFELD.stunden.length;
+  if (wAbw.key === key) return wAbw;
+  var S = WFELD.stunden, P = ORTE.map(function (o) { return [o[2], o[1]]; }), st = [], ids = {};
+  function messung(x) {
+    if (!x || ids[x.id] || Date.now() - x.zeit > 54e5) return;
+    ids[x.id] = 1;
+    var m = windVek(x.kmh, x.von), f = S[grenze(Math.round((x.zeit - WFELD.t0) / 36e5), 0, S.length - 1)];
+    P.push([x.lon, x.lat]); st.push([grenze(m[0] - feldAn(f[0], x.lon, x.lat), -15, 15), grenze(m[1] - feldAn(f[1], x.lon, x.lat), -15, 15)]);
+  }
+  if (daten) daten.forEach(function (o) { messung(o.current.windStation); });
+  if (stadtWerte) stadtWerte.forEach(function (s) { messung(s.windStation); });
+  var U = [], V = [];
+  S.forEach(function (f, k) {
+    var tk = WFELD.t0 + k * 36e5, aus = ausklingen(tk), u = leer(P.length), v = leer(P.length);
+    if (daten) daten.forEach(function (o, i) {
+      var e = (o.mos || []).filter(function (x) { return x[0] === tk && typeof x[2] === 'number' && typeof x[3] === 'number'; })[0];
+      if (!e) return;
+      var m = windVek(e[2], e[3]);
+      u[i] = grenze(m[0] - feldAn(f[0], P[i][0], P[i][1]), -15, 15); v[i] = grenze(m[1] - feldAn(f[1], P[i][0], P[i][1]), -15, 15);
+    });
+    st.forEach(function (d, j) { u[ORTE.length + j] = d[0] * aus; v[ORTE.length + j] = d[1] * aus; });
+    U.push(u); V.push(v);
+  });
+  wAbw = { key: key, P: P, U: U, V: V };
+  return wAbw;
+}
+function windAn(lon, lat, t) { // { kmh, von } an einem Ort zu einer Zeit (von = woher der Wind kommt, in Grad), angeglichen
+  var s = WFELD.stunden, A = windAbweichungen(), g = gewichte(A.P, lon, lat), k = grenze((t - WFELD.t0) / 36e5, 0, s.length - 1), k0 = Math.min(s.length - 2, k | 0), u = k - k0;
+  var ue = (feldAn(s[k0][0], lon, lat) + mischen(g, A.U[k0])) * (1 - u) + (feldAn(s[k0 + 1][0], lon, lat) + mischen(g, A.U[k0 + 1])) * u;
+  var no = (feldAn(s[k0][1], lon, lat) + mischen(g, A.V[k0])) * (1 - u) + (feldAn(s[k0 + 1][1], lon, lat) + mischen(g, A.V[k0 + 1])) * u;
+  return { kmh: Math.sqrt(ue * ue + no * no) * 3.6, von: (Math.atan2(-ue, -no) * 180 / Math.PI + 360) % 360 };
+}
+// Fläche der Windstärke zur Zeit t; legt nebenbei die Windkomponenten je Feld für die Linien ab (wRaster.ue/no)
+function windBild(t) {
+  var sw = Math.ceil(geo.w / 16), sh = Math.ceil(geo.h / 16), A = windAbweichungen(), key = radarBox() + '|' + WFELD.t0 + '|' + WFELD.stunden.length + '|' + A.key, k, i, j;
+  if (!wRaster || wRaster.key !== key) {
+    var s = WFELD.stunden, U = s.map(function () { return new Float32Array(sw * sh); }), V = s.map(function () { return new Float32Array(sw * sh); });
+    for (j = 0; j < sh; j++) for (i = 0; i < sw; i++) {
+      var lon = (geo.minx + (i + .5) * geo.w / sw * geo.res) / 6378137 * 180 / Math.PI;
+      var lat = (2 * Math.atan(Math.exp((geo.maxy - (j + .5) * geo.h / sh * geo.res) / 6378137)) - Math.PI / 2) * 180 / Math.PI;
+      var g = gewichte(A.P, lon, lat);
+      for (k = 0; k < s.length; k++) {
+        U[k][j * sw + i] = feldAn(s[k][0], lon, lat) + mischen(g, A.U[k]);
+        V[k][j * sw + i] = feldAn(s[k][1], lon, lat) + mischen(g, A.V[k]);
+      }
+    }
+    wCv.width = sw; wCv.height = sh;
+    wRaster = { key: key, sw: sw, sh: sh, U: U, V: V, ue: new Float32Array(sw * sh), no: new Float32Array(sw * sh), img: wCv.getContext('2d').createImageData(sw, sh) };
+  }
+  var R = wRaster, n = R.U.length, kk = grenze((t - WFELD.t0) / 36e5, 0, n - 1), k0 = Math.min(n - 2, kk | 0), u = kk - k0, d = R.img.data;
+  for (i = 0; i < R.ue.length; i++) {
+    var ue = R.U[k0][i] + (R.U[k0 + 1][i] - R.U[k0][i]) * u, no = R.V[k0][i] + (R.V[k0 + 1][i] - R.V[k0][i]) * u;
+    R.ue[i] = ue; R.no[i] = no;
+    var c = W_LUT[grenze(Math.round(Math.sqrt(ue * ue + no * no) * 3.6 * 2), 0, 240)];
+    d[i * 4] = c[0]; d[i * 4 + 1] = c[1]; d[i * 4 + 2] = c[2]; d[i * 4 + 3] = 255;
+  }
+  wCv.getContext('2d').putImageData(R.img, 0, 0);
+  return wCv;
+}
+// Linien: jedes Teilchen wandert mit dem Wind an seiner Stelle und zieht eine verblassende Spur; nach einer Weile neu an zufälligem Ort
+function windTeilchen(dt) {
+  var R = wRaster, e = geo.rem, x = wSpur.getContext('2d'), i;
+  if (wSpur.width !== geo.w || wSpur.height !== geo.h || !wTeile) {
+    wSpur.width = geo.w; wSpur.height = geo.h; wSpur.oben = null;
+    var n = Math.round(geo.w * geo.h / (e * e) / (document.body.classList.contains('sparsam') ? 12 : 6));
+    wTeile = new Float32Array(n * 3);
+    for (i = 0; i < n; i++) { wTeile[i * 3] = Math.random() * geo.w; wTeile[i * 3 + 1] = Math.random() * geo.h; wTeile[i * 3 + 2] = Math.random() * 90; }
+  }
+  x.globalCompositeOperation = 'destination-in'; x.fillStyle = 'rgba(0,0,0,.94)'; x.fillRect(0, 0, geo.w, geo.h); // alte Spuren verblassen langsam: lange Fäden
+  if (!wSpur.oben) { wSpur.oben = x.createLinearGradient(0, 0, 0, 16 * e); wSpur.oben.addColorStop(0, 'rgba(0,0,0,.5)'); wSpur.oben.addColorStop(1, 'rgba(0,0,0,0)'); }
+  x.globalCompositeOperation = 'destination-out'; x.fillStyle = wSpur.oben; x.fillRect(0, 0, geo.w, 16 * e); // oben (Überschrift) ausblenden
+  x.globalCompositeOperation = 'source-over';
+  if (RUHIG) return; // Bewegung reduzieren: nur die Fläche, keine wandernden Linien
+  x.strokeStyle = 'rgba(255,255,255,.6)'; x.lineWidth = .13 * e; x.lineCap = 'round'; x.beginPath();
+  var K = .7 * e * dt, fx = R.sw / geo.w, fy = R.sh / geo.h; // 10 m/s ≈ 7 rem je Sekunde (Bild, nicht maßstäblich)
+  for (i = 0; i < wTeile.length; i += 3) {
+    var px = wTeile[i], py = wTeile[i + 1], z = Math.min(R.sh - 1, py * fy | 0) * R.sw + Math.min(R.sw - 1, px * fx | 0);
+    var nx = px + R.ue[z] * K, ny = py - R.no[z] * K;
+    if (++wTeile[i + 2] > 90 || nx < 0 || ny < 0 || nx >= geo.w || ny >= geo.h) {
+      wTeile[i] = Math.random() * geo.w; wTeile[i + 1] = Math.random() * geo.h; wTeile[i + 2] = Math.random() * 30; continue;
+    }
+    x.moveTo(px, py); x.lineTo(nx, ny); wTeile[i] = nx; wTeile[i + 1] = ny;
+  }
+  x.stroke();
+}
+function windFilm(t) {
+  if (!WFELD || !geo) return;
+  if (t - filmZuletzt < (document.body.classList.contains('sparsam') ? 58 : 28)) return;
+  var dt = Math.min(.1, (t - (wZuletzt || t)) / 1000); filmZuletzt = wZuletzt = t;
+  var z = filmAn ? feldZyklus(t, WFELD) : null;
+  if (z == null && tempAnim) { tempAnim = false; filmLeiste(null); radarKopf(); }
+  if (z != null) { tempAnim = true; tempZeit = z; }
+  windBild(tempAnim ? tempZeit : Date.now());
+  windTeilchen(dt);
+  setzeKarte();
+}
+
+function legendeZeigen() {
+  var d = ebeneDaten[ebene], html = EBENEN[ebene].legende;
+  if (ebene === 'blitze' && d && d.leer) html = 'Gerade keine Blitze';
+  setze($('rlegende'), html);
+}
+function ebeneSetzen(name) {
+  ebene = name;
+  $('radarbox').classList.toggle('ohneregen', !mitRegen());
+  $('radarbox').classList.toggle('mitfeld', name === 'temp' || name === 'wind'); // Temperatur und Wind haben auch Live/Bewegung/Beides
+  if (tempAnim) filmStill();
+  wTeile = null; // Wind-Linien beim Wechsel neu verteilen
+  $('rkopf').querySelector('.titel').textContent = EBENEN[name].titel;
+  $('rebene').querySelector('.haupt').innerHTML = '<svg viewBox="0 0 24 24">' + SYM[name] + '</svg>';
+  $('rebene').querySelector('.haupt').setAttribute('aria-label', 'Kartenebene: ' + EBENEN[name].titel + ' (ändern)');
+  [].forEach.call($('rebene').querySelectorAll('.liste button'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-ebene') === name)); });
+  if (geo && EBENEN[name].wms && (!ebeneDaten[name] || ebeneDaten[name].box !== radarBox())) ladeEbene(name);
+  if (!mitRegen() && radarEbene) radarEbene = null;
+  legendeZeigen(); progZeigen(); setzeKarte(); radarKopf();
+}
+$('rebene').querySelector('.liste').innerHTML = Object.keys(EBENEN).map(function (k) {
+  return '<button type="button" data-ebene="' + k + '" aria-pressed="false" aria-label="' + EBENEN[k].titel + '" title="' + EBENEN[k].titel + '"><svg viewBox="0 0 24 24">' + SYM[k] + '</svg></button>';
+}).join('');
+$('rebene').addEventListener('click', function (e) {
+  e.stopPropagation(); // sonst hält der „Tipp daneben“-Handler das gerade ausgetauschte Symbol für außerhalb und schließt sofort
+  var b = e.target.closest ? e.target.closest('button') : null;
+  if (!b) return;
+  var auf = $('rebene').classList.contains('offen');
+  if (b.classList.contains('haupt')) { if (auf) menuZu(true); else menuAuf(); return; }
+  ebeneSetzen(b.getAttribute('data-ebene'));
+  try { localStorage.setItem('kw-radar-ebene', ebene); } catch (e2) {}
+  menuZu(true);
+});
+function menuZu(fokus) { // fokus: der Hauptknopf bekommt den Fokus zurück (sonst hinge er an einem unsichtbaren Knopf – Fernbedienung!)
+  var h = $('rebene').querySelector('.haupt');
+  if (fokus && $('rebene').classList.contains('offen')) h.focus();
+  $('rebene').classList.remove('offen'); $('radarbox').classList.remove('menue'); h.setAttribute('aria-expanded', 'false');
+  h.innerHTML = '<svg viewBox="0 0 24 24">' + SYM[ebene] + '</svg>';
+}
+function menuAuf() { // offen zeigt der Hauptknopf ein ×, der Fokus springt auf die aktuelle Ebene
+  var h = $('rebene').querySelector('.haupt');
+  $('rebene').classList.add('offen'); $('radarbox').classList.add('menue'); h.setAttribute('aria-expanded', 'true');
+  h.innerHTML = '<svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  var a = $('rebene').querySelector('.liste button[aria-pressed="true"]'); if (a) a.focus();
+}
+document.addEventListener('click', function (e) { if (!$('rebene').contains(e.target)) menuZu(false); }); // Tipp daneben schließt das Menü
+$('rzoom').addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('button') : null;
+  if (b && b.getAttribute('aria-disabled') !== 'true') zoomSetzen(zoomNr + +b.getAttribute('data-zoom'));
+});
+// Bedienschutz: kein Zoomen (Zwei-Finger, Doppeltipp, Strg+Rad, Strg+Plus/Minus), kein Markieren, kein Kontextmenü, kein Ziehen.
+// Safari hält sich nicht an user-scalable=no, darum zusätzlich hier.
+(function () {
+  var nein = function (e) { e.preventDefault(); }, aktiv = { passive: false };
+  ['gesturestart', 'gesturechange', 'gestureend', 'contextmenu', 'dragstart', 'selectstart', 'dblclick'].forEach(function (t) { document.addEventListener(t, nein, aktiv); });
+  document.addEventListener('touchmove', function (e) { if (e.touches.length > 1 || e.scale && e.scale !== 1) e.preventDefault(); }, aktiv);
+  var letzterTipp = 0; // Doppeltipp zoomt in alten Browsern; auf Knöpfen nicht abfangen, sonst ginge der zweite Tipp verloren
+  document.addEventListener('touchend', function (e) {
+    var jetzt = Date.now();
+    if (jetzt - letzterTipp < 350 && !(e.target.closest && e.target.closest('button'))) e.preventDefault();
+    letzterTipp = jetzt;
+  }, aktiv);
+  document.addEventListener('wheel', function (e) { if (e.ctrlKey || e.metaKey) e.preventDefault(); }, aktiv);
+  document.addEventListener('keydown', function (e) { if ((e.ctrlKey || e.metaKey) && /^(\+|-|=|0|Add|Subtract)$/.test(e.key)) e.preventDefault(); });
+  // Versehentlicher Doppeltipp auf einen Knopf löst nur einmal aus (Menü würde sonst gleich wieder zugehen)
+  var letzterKlick = 0, letzterKnopf = null;
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('button') : null;
+    if (b && b === letzterKnopf && Date.now() - letzterKlick < 400 && !b.closest('#rzoom') /* zweimal schnell „+“ ist gewollt */) { e.stopPropagation(); e.preventDefault(); return; }
+    letzterKlick = Date.now(); letzterKnopf = b;
+  }, true);
+  if (window.getSelection) setInterval(function () { var s = getSelection(); if (s && s.rangeCount && !s.isCollapsed) s.removeAllRanges(); }, 1000);
+})();
+
+// Fernbedienung (Android-TV-Stick) hat Pfeiltasten statt Tab: ein Pfeil springt zum nächsten sichtbaren Knopf in dieser Richtung (nach Lage auf dem Bildschirm)
+var PFEIL = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0], 38: [0, -1], 40: [0, 1], 37: [-1, 0], 39: [1, 0] };
+function knopfInRichtung(f, dx, dy) {
+  var a = f.getBoundingClientRect(), ax = a.left + a.width / 2, ay = a.top + a.height / 2, best = null, bestW = Infinity;
+  [].forEach.call(document.querySelectorAll('#radarbox button'), function (b) {
+    var r = b.getBoundingClientRect();
+    if (b === f || !r.width || b.closest('#radarbox.menue #rzoom')) return; // ausgeblendet (display:none) oder unsichtbar hinter dem offenen Menü
+    var x = r.left + r.width / 2 - ax, y = r.top + r.height / 2 - ay, vor = x * dx + y * dy, quer = Math.abs(x * dy + y * dx);
+    if (vor < 4) return;
+    var w = vor + 3 * quer; // seitlich versetzte Knöpfe zählen weiter weg
+    if (w < bestW) { bestW = w; best = b; }
+  });
+  return best;
+}
+document.addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' || e.keyCode === 27) return menuZu(true);
+  if (!e.ctrlKey && !e.metaKey && (e.key === '+' || e.key === '-')) return zoomSetzen(zoomNr + (e.key === '+' ? -1 : 1)); // Tastatur: + / −
+  var p = PFEIL[e.key] || PFEIL[e.keyCode], f = document.activeElement;
+  if (!p) return;
+  e.preventDefault();
+  if (!f || !f.closest || !f.closest('#radarbox button')) return $('rebene').querySelector('.haupt').focus();
+  var n = knopfInRichtung(f, p[0], p[1]);
+  if (n) n.focus();
+});
+
+/* ---------- Radar-Prognose: Zugrichtung und Regen in Wesel ---------- */
+// Der Wetterdienst liefert im selben Layer auch die nächsten 2 Stunden als Vorhersage (5-Minuten-Schritte, nur bis Referenzzeit + 2 h).
+// Zugrichtung = Verschiebung zwischen dem Radarbild jetzt und der Vorhersage in 40 Minuten. Die Vorhersagebilder nutzt auch die Bewegung.
+var PROG = null, progLaeuft = false, progVersuch = 0;
+var PROG_SCHRITT = 10 * 60000, BEW_MIN = 40, BEW_W = 68, BEW_R = 24;
+var KOMPASS = ['Nord', 'Nordost', 'Ost', 'Südost', 'Süd', 'Südwest', 'West', 'Nordwest'];
+
+// Bild des Wetterdienstes für eine Zeit als Feld der Regenstufen (0 = trocken, 1..11 = schwach..stark); null bei Fehler
+function stufenBild(t, bbox, w, h, fertig) {
+  var img = new Image(), aus = false;
+  function ende(v) { if (!aus) { aus = true; fertig(v); } }
+  img.crossOrigin = 'anonymous';
+  img.onload = function () {
+    try {
+      var c = document.createElement('canvas'); c.width = w; c.height = h;
+      var x = c.getContext('2d'); x.drawImage(img, 0, 0, w, h);
+      var p = x.getImageData(0, 0, w, h).data, f = new Uint8Array(w * h);
+      for (var i = 0; i < f.length; i++) f[i] = p[i * 4 + 3] < 250 ? 0 : stufeIndex(p[i * 4], p[i * 4 + 1], p[i * 4 + 2]) + 1;
+      ende(f);
+    } catch (e) { ende(null); }
+  };
+  img.onerror = function () { ende(null); };
+  img.src = WMS + '&bbox=' + bbox + '&width=' + w + '&height=' + h + '&time=' + new Date(t).toISOString();
+  setTimeout(function () { ende(null); }, 20000);
+}
+
+// Verschiebung (in Bildpunkten) mit der besten Übereinstimmung zwischen zwei Regenbildern (Überdeckung / Vereinigung, nach Stärke gewichtet)
+function verschiebung(a, b, w, h, R) {
+  var tot = 0, i, sx, sy, x, y, best = 0, bx = 0, by = 0;
+  for (i = 0; i < a.length; i++) tot += a[i];
+  if (tot < 80) return null; // zu wenig Regen im Bild für eine Aussage
+  for (sy = -R; sy <= R; sy++) for (sx = -R; sx <= R; sx++) {
+    var mn = 0, mx = 0, y1 = Math.min(h, h - sy), x1 = Math.min(w, w - sx);
+    for (y = Math.max(0, -sy); y < y1; y++) for (x = Math.max(0, -sx); x < x1; x++) {
+      var va = a[y * w + x], vb = b[(y + sy) * w + x + sx];
+      if (va > vb) { mn += vb; mx += va; } else { mn += va; mx += vb; }
+    }
+    var s = mn / (mx + 40);
+    if (s > best) { best = s; bx = sx; by = sy; }
+  }
+  return best < .2 ? null : { dx: bx, dy: by };
+}
+
+// Regenstufe im Feld (x, y) und Zahl der nassen Felder im 3×3-Umkreis (ein Feld ist rund 2 km breit)
+function radarAmOrt(f, w, h, x, y) {
+  var nass = 0;
+  for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++)
+    if (x + dx >= 0 && x + dx < w && y + dy >= 0 && y + dy < h && f[(y + dy) * w + x + dx]) nass++;
+  return { stufe: f[y * w + x] || 0, nass: nass };
+}
+function holePrognose(t0) {
+  if (progLaeuft || !geo) return;
+  progLaeuft = true; progVersuch = Date.now();
+  var bw = BEW_W, bh = Math.round(bw * geo.h / geo.w), bbox = radarBox(), erg = {}, offen = 2;
+  function fertig() {
+    progLaeuft = false;
+    if (bbox !== radarBox()) { progVersuch = 0; return; } // inzwischen gezoomt: für den neuen Ausschnitt gleich neu rechnen
+    if (!erg.a || !erg.b) return; // nichts Brauchbares bekommen: alte Prognose bleibt, nächster Versuch in 1 Minute
+    var z = null, fx = 0, fy = 0, s = verschiebung(erg.a, erg.b, bw, bh, BEW_R);
+    if (s) {
+      fx = s.dx / bw / BEW_MIN; fy = s.dy / bh / BEW_MIN; // Verschiebung je Minute als Anteil der Bildbreite/-höhe (für die Bewegung)
+      z = { grad: (Math.atan2(s.dx, -s.dy) * 180 / Math.PI + 360) % 360, kmh: Math.round(Math.sqrt(s.dx * s.dx + s.dy * s.dy) * RADAR.km / bw / (BEW_MIN / 60) / 5) * 5 };
+    }
+    PROG = { t: t0, zug: z, fx: fx, fy: fy, stand: Date.now(), ort: radarAmOrt(erg.a, bw, bh, wx, wy) };
+    progZeigen(); zeichne(); // „Wesel jetzt“ richtet sich beim Regen nach dem Radar
+  }
+  var wp = kartePx(ORTE[0][2], ORTE[0][1]), wx = Math.floor(wp[0] / geo.w * bw), wy = Math.floor(wp[1] / geo.h * bh);
+  function da(name) { return function (v) { erg[name] = v; if (--offen === 0) fertig(); }; }
+  stufenBild(t0, bbox, bw, bh, da('a'));
+  stufenBild(t0 + BEW_MIN * 60000, bbox, bw, bh, da('b'));
+}
+
+function progZeigen() {
+  var P = PROG, z = P && mitRegen() && Date.now() - P.stand <= 25 * 60000 ? P.zug : null; // veraltet: lieber nichts als Falsches
+  setze($('rzug'), z && z.kmh >= 5
+    ? '<svg viewBox="0 0 24 24" role="img" aria-label="Regen zieht nach ' + KOMPASS[Math.round(z.grad / 45) % 8] + '" style="transform:rotate(' + Math.round(z.grad) + 'deg)"><path d="M12 2l7.5 9.5h-4.8V22H9.3V11.5H4.5z"/></svg><span>' + z.kmh + ' km/h</span>' : '');
+}
+
+/* ---------- Bewegung: ruhiges Gleiten vom Radarbild jetzt in die Vorhersage der nächsten Stunde ---------- */
+// Ablauf: 5 s „jetzt“ stehen, 7 s weich bis +60 Min gleiten, 1,5 s stehen, 1,5 s zurück auf „jetzt“ blenden.
+// Zwischen den 10-Minuten-Bildern wird entlang der Zugrichtung verschoben und überblendet. Die beiden Bilder werden addiert
+// statt übereinandergelegt, so wird der Regen in der Mitte des Übergangs nicht blasser (kein Flackern).
+var FILM = null, filmLaeuft = false, filmVersuch = 0, filmVersuchT = 0, FILM_N = 7, filmZuletzt = 0, filmPuffer = document.createElement('canvas');
+var F_STEHT = 5000, F_LAUF = 7000, F_ENDE = 1500, F_ZURUECK = 1500;
+
+function ladeFilm(t0, basis) {
+  if (filmLaeuft || !geo) return;
+  filmLaeuft = true; filmVersuch = Date.now(); filmVersuchT = t0; // neue Radarzeit darf sofort laden, gleiche erst nach 1 Minute wieder
+  var w = basis.width, h = basis.height, bbox = radarBox(), bilder = [basis], offen = FILM_N - 1, k;
+  function fertig() {
+    filmLaeuft = false;
+    for (var n = 1; n < FILM_N && bilder[n]; n++); // nur lückenlos ab jetzt
+    if (n >= 2 && radarBild && radarBild.t === t0 && radarBild.box === bbox && bbox === radarBox()) { FILM = { t: t0, box: bbox, bilder: bilder.slice(0, n) }; bilder.slice(n).forEach(frei); }
+    else bilder.slice(1).forEach(frei); // inzwischen gibt es ein neueres Radarbild oder einen anderen Zoom
+  }
+  function eins(k) {
+    var img = new Image(), aus = false;
+    function ende(c) { if (aus) return; aus = true; bilder[k] = c; if (--offen === 0) fertig(); }
+    img.crossOrigin = 'anonymous';
+    img.onload = function () { try { ende(faerbe(img, w, h)); } catch (e) { ende(null); } };
+    img.onerror = function () { ende(null); };
+    img.src = WMS + '&bbox=' + bbox + '&width=' + w + '&height=' + h + '&time=' + new Date(t0 + k * PROG_SCHRITT).toISOString();
+    setTimeout(function () { ende(null); }, 20000);
+  }
+  for (k = 1; k < FILM_N; k++) eins(k);
+}
+
+function glatt(p) { return p * p * (3 - 2 * p); }
+// Bild a und Bild b (u = 0..1) in den Puffer: a rückt in Zugrichtung vor, b kommt von hinten nach
+function mische(a, b, u, zug) {
+  var w = a.width, h = a.height, x = filmPuffer.getContext('2d'), sx = 0, sy = 0;
+  if (filmPuffer.width !== w || filmPuffer.height !== h) { filmPuffer.width = w; filmPuffer.height = h; }
+  if (zug && PROG && FILM && PROG.t === FILM.t) { sx = PROG.fx * 10 * w; sy = PROG.fy * 10 * h; }
+  x.clearRect(0, 0, w, h);
+  x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1 - u; x.drawImage(a, u * sx, u * sy);
+  x.globalCompositeOperation = 'lighter'; x.globalAlpha = u; x.drawImage(b, -(1 - u) * sx, -(1 - u) * sy);
+  x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1;
+}
+// Drei Ansichten: live (steht), bewegung (gleitet ohne Pause), beides (5 s live, dann gleiten).
+// Wahl wird im Gerät gemerkt; ?radar=live, ?radar=bewegung oder ?radar=beides in der Adresse geht vor (z. B. für den Stick).
+// Ist am Gerät „Bewegung reduzieren“ an, startet es auf Live; ein Tipp auf einen anderen Knopf setzt sich darüber hinweg (bewusste Wahl).
+var MODI = { live: 1, bewegung: 1, beides: 1 }, modus = RUHIG ? 'live' : 'beides', filmAn = true, filmStart = 0;
+try { var gemerkt = localStorage.getItem('kw-radar-ansicht'); if (MODI[gemerkt]) modus = gemerkt; } catch (e) {}
+if (MODI[probe('radar')]) modus = probe('radar');
+function modusSetzen(m) {
+  modus = m; filmAn = m !== 'live';
+  [].forEach.call(document.querySelectorAll('#rmodus button'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-modus') === m)); });
+}
+$('rmodus').addEventListener('click', function (e) {
+  var b = e.target.closest ? e.target.closest('button') : e.target;
+  if (!b || !MODI[b.getAttribute('data-modus')]) return;
+  modusSetzen(b.getAttribute('data-modus'));
+  try { localStorage.setItem('kw-radar-ansicht', modus); } catch (e2) {}
+  if (!filmAn) filmStill();
+  else filmStart = performance.now() - (modus === 'beides' ? F_STEHT : 0); // nach dem Tipp sofort losgleiten, nicht erst 5 s stehen
+});
+modusSetzen(modus);
+
+// Fehlersuche am Gerät: Adresse mit ?diagnose=1 öffnen, dann steht oben links, was die Bewegung gerade macht
+if (probe('diagnose')) (function () {
+  var box = document.createElement('pre'), n = 0, fehler = [];
+  box.style.cssText = 'position:fixed;left:8px;top:8px;z-index:99;margin:0;padding:8px;max-width:70vw;white-space:pre-wrap;background:rgba(0,0,0,.85);color:#7f7;font:13px/1.35 monospace';
+  document.body.appendChild(box);
+  window.addEventListener('error', function (e) { fehler.push(e.message); });
+  (function zaehle() { n++; requestAnimationFrame(zaehle); })();
+  setInterval(function () {
+    box.textContent = ['Modus: ' + modus + (RUHIG ? ' (Gerät: Bewegung reduzieren)' : ''),
+      'Radar: ' + (radarBild ? hhmm(new Date(radarBild.t)) + ', ' + radarBild.cv.width + '×' + radarBild.cv.height + ', vor ' + Math.round((Date.now() - radarStand) / 1000) + ' s geholt' : 'keins'),
+      'Film: ' + (FILM ? FILM.bilder.length + ' Bilder für ' + hhmm(FILM.t) : 'keiner') + (filmLaeuft ? ', lädt' : '') + (filmVersuch ? ', letzter Versuch vor ' + Math.round((Date.now() - filmVersuch) / 1000) + ' s' : ''),
+      'Zug: ' + (PROG ? (PROG.fx * 1000).toFixed(2) + ' / ' + (PROG.fy * 1000).toFixed(2) : 'keiner'),
+      'Ebene aktiv: ' + !!radarEbene + ', Bilder/s: ' + n + ', Kopf: ' + $('rwann').textContent,
+      'Wetter: ' + (geholt ? 'Stand ' + hhmm(geholt) : 'keins') + ', Warnungen: Stand ' + hhmm(warnGeholt) + ', Radar über Wesel: ' + (PROG && PROG.ort ? 'Stufe ' + PROG.ort.stufe + ', ' + PROG.ort.nass + '/9 nass' : '–'),
+      'Uhr des Geräts: ' + hhmm(Date.now()) + ' deutsche Zeit' + (uhrFehler == null ? '' : ', Abweichung zum Server ' + uhrFehler + ' s') + ', läuft seit ' + Math.round((Date.now() - seitenStart) / 60000) + ' min',
+      'Fehler: ' + (fehler.slice(-3).join(' | ') || 'keine'), navigator.userAgent].join('\n');
+    n = 0;
+  }, 1000);
+})();
+
+function filmLeiste(p) { // Zeitleiste unten im Radar: p = Anteil der gezeigten Vorhersagestunde, null = aus
+  var l = $('rfilm'), an = p != null;
+  if (l.classList.contains('an') !== an) l.classList.toggle('an', an);
+  if (an) l.firstChild.style.width = Math.round(p * 1000) / 10 + '%';
+}
+function filmStill() { filmLeiste(null); if (radarEbene || tempAnim) { radarEbene = null; tempAnim = false; setzeKarte(); } radarKopf(); }
+function filmBild(t) {
+  requestAnimationFrame(filmBild);
+  if (ebene === 'temp') return tempFilm(t);
+  if (ebene === 'wind') return windFilm(t);
+  var F = FILM;
+  // Gleiche Radarzeit, aber neu geladenes Bild (z. B. erst das gespeicherte, dann das frische): einfach austauschen statt neu laden
+  if (F && radarBild && F.t === radarBild.t && F.bilder[0] !== radarBild.cv) F.bilder[0] = radarBild.cv;
+  // „Beides“ ohne jeden Regen (jetzt und in der Vorhersage): bei „Live“ bleiben, statt über einer leeren Karte dauernd zwischen
+  // „Live“ und „Vorhersage“ zu wechseln. Die ausdrücklich gewählte „Bewegung“ läuft weiter.
+  var trocken = modus === 'beides' && F && F.bilder.every(function (b) { return b.nass === 0; });
+  if (trocken || !filmAn || !mitRegen() || !F || !radarBild || F.t !== radarBild.t || Date.now() - radarStand > 20 * 60000) { if (radarEbene || $('rfilm').classList.contains('an')) filmStill(); return; }
+  if (t - filmZuletzt < (document.body.classList.contains('sparsam') ? 58 : 28)) return; // höchstens ca. 30 Bilder/s, im Sparmodus ca. 15 (etwas Spiel, damit kein Bild ausfällt)
+  filmZuletzt = t;
+  var steht = modus === 'beides' ? F_STEHT : 0, zyklus = steht + F_LAUF + F_ENDE + F_ZURUECK; // „bewegung“: ohne Live-Pause
+  var n = F.bilder.length, M = (n - 1) * 10, c = ((t - filmStart) % zyklus + zyklus) % zyklus, m, k, u;
+  if (c < steht) { if (radarEbene || $('rfilm').classList.contains('an')) filmStill(); return; }
+  c -= steht;
+  if (c < F_LAUF + F_ENDE) {
+    m = c < F_LAUF ? glatt(c / F_LAUF) * M : M;
+    k = Math.min(n - 2, Math.floor(m / 10)); u = (m - k * 10) / 10;
+    mische(F.bilder[k], F.bilder[k + 1], u, true);
+    // „Bewegung“ zeigt nie „Live“, auch nicht beim Zurückblenden auf jetzt (Jakobs Wunsch)
+    kopfSetzen(modus === 'bewegung' ? 'Bewegung' : 'Vorhersage', 'vorher', hhmm(new Date(F.t + Math.round(m / 10) * PROG_SCHRITT)) + ' Uhr');
+    filmLeiste(m / M);
+  } else {
+    u = glatt((c - F_LAUF - F_ENDE) / F_ZURUECK);
+    mische(F.bilder[n - 1], F.bilder[0], u, false);
+    if (modus === 'bewegung') { kopfSetzen('Bewegung', 'vorher', hhmm(new Date(F.t)) + ' Uhr'); filmLeiste(1 - u); }
+    else { filmLeiste(null); radarKopf(); }
+  }
+  radarEbene = filmPuffer; setzeKarte();
+}
+
+/* ---------- Anzeigen ---------- */
+// Tauscht Inhalt nur, wenn er sich geändert hat; dann kurzes Einblenden
+function setze(el, html) {
+  if (el.__html === html) return;
+  var erstes = el.__html == null;
+  el.__html = html;
+  el.innerHTML = html;
+  if (!erstes) { el.classList.remove('neu'); void el.offsetWidth; el.classList.add('neu'); }
+}
+
+var daten = null, geholt = 0; // letzter guter Stand und wann er vom Server kam
+var himmelGesetzt = false, spielart = { fam: null, i: 0, seit: 0 };
+
+function himmelStellen(w, d, versatz, jetzt, code) {
+  var l = lage(code), c = w.current;
+  var fam = VARIANTEN[PROBE.wetter] ? PROBE.wetter : l[0], s = VARIANTEN[PROBE.wetter] ? .8 : l[2];
+  var ph = phase(jetzt.getTime(), d.sunrise && new Date(d.sunrise[versatz]).getTime(), d.sunset && new Date(d.sunset[versatz]).getTime(), c.is_day);
+  if (FARBEN[PROBE.phase]) ph = PROBE.phase;
+  // alle 7 Minuten (oder bei neuer Wetterlage) eine andere Spielart würfeln
+  var arten = VARIANTEN[fam].length;
+  if (spielart.fam !== fam || Date.now() - spielart.seit > 7 * 60 * 1000) {
+    var neu = Math.random() * arten | 0;
+    if (neu === spielart.i && spielart.fam === fam) neu = (neu + 1) % arten;
+    spielart = { fam: fam, i: neu, seit: Date.now() };
+  }
+  if (PROBE.variante != null) spielart.i = PROBE.variante % arten;
+  var kmh = c.wind_speed_10m || 0, richtung = (c.wind_direction_10m == null ? 250 : c.wind_direction_10m) * Math.PI / 180;
+  var wx = { kmh: kmh, wind: -Math.sin(richtung) * Math.min(kmh / 40, 1), // Wind aus Westen weht auf dem Bild nach rechts
+    boe: grenze(((c.wind_gusts_10m || kmh) - kmh) / 40, 0, .6), wolken: c.cloud_cover == null ? null : c.cloud_cover / 100 };
+  phaseJetzt = ph;
+  ziel = himmelZiel(fam, s, ph, wx, spielart.i);
+  if (!himmelGesetzt) { himmelGesetzt = true; ist = JSON.parse(JSON.stringify(ziel)); } // beim ersten Mal ohne Übergang
+}
+
+// Die große Temperatur darf den Text rechts daneben nie berühren: Bei langen Werten („−12,4°“ neben „Starke Schneeschauer“)
+// wird die Zahl schrittweise kleiner, bis mindestens 1,5 rem Luft bleibt.
+// Probe-Adressen (?wetter=…) zeigen auch Text und Symbol der Lage, nicht nur den Himmel
+var PROBE_CODE = { klar: 0, heiter: 1, wolkig: 2, bedeckt: 3, nebel: 45, niesel: 53, regen: 63, eisregen: 66, schauer: 81,
+  schnee: 73, schneeschauer: 85, gewitter: 95, hagel: 96 };
+var NASS = { niesel: 1, eisregen: 1, regen: 1, schauer: 1, schnee: 1, schneeschauer: 1, gewitter: 1, hagel: 1 };
+// Kommt Regen? Klartext für die Ansage aus der Stundenvorhersage der nächsten 3 Stunden.
+// Der Wert einer Uhrzeit gilt für die Stunde davor (wie bei regenMax): Eintrag 15 Uhr = 14–15 Uhr.
+// Regnet es jetzt (laut Radar), sagt die Lage das schon; „trocken ab …“ aus dem Modell könnte dem Radar widersprechen, also nichts.
+function regenKommt(h, heute, std, code) {
+  if (NASS[lage(code)[0]]) return '';
+  for (var k = 1; k <= 3; k++) {
+    var s = std + k, tag = s >= 24 ? tagPlus(heute, 1) : heute, c = h.weather_code[h.time.indexOf(tag + 'T' + zwei(s % 24) + ':00')];
+    if (c == null) return '';                                   // Vorhersage reicht nicht weit genug: lieber nichts sagen
+    if (NASS[lage(c)[0]]) return (/schnee/.test(lage(c)[0]) ? 'Schnee ' : 'Regen ') + (k === 1 ? 'in der nächsten Stunde' : 'ab ca. ' + ((s - 1) % 24) + ' Uhr');
+  }
+  return 'Nächste 3 Std. trocken';
+}
+function ohneDaten(text) { // Kaltstart ohne gespeicherten Stand: jede Karte sagt, was los ist (keine leeren Glasflächen)
+  $('orte').innerHTML = '<div id="stand"' + (/Keine/.test(text) ? ' class="alt"' : '') + '><i></i><span>' + text + '</span></div>';
+  $('heute').innerHTML = $('tage').innerHTML = '<div class="leer">' + text + '</div>';
+  // In der App auf dem Stick: sagen, wie man ins WLAN kommt (die Menü-Taste öffnet dort die WLAN-Seite)
+  if (/Keine/.test(text) && location.protocol === 'file:' && /Android/.test(navigator.userAgent)) $('tage').innerHTML = '<div class="leer">WLAN einstellen: Menü-Taste (drei Striche) auf der Fernbedienung</div>';
+  $('heute').__html = $('tage').__html = null;
+}
+function heldPassen() {
+  var t = $('heldtemp'), r = document.body.classList.contains('veraltet') ? $('warn') : $('heldtext'), rem = window.innerHeight / 100, g = document.createRange();
+  g.selectNodeContents(t); t.style.fontSize = '';
+  for (var gr = 15; gr > 9 && r.offsetWidth && g.getBoundingClientRect().right > r.getBoundingClientRect().left - 1.5 * rem; ) t.style.fontSize = (gr -= .5) + 'rem';
+  // Logo schrumpft (bis 5,6 rem), wenn ein langer, zweizeiliger Wettertext sonst an das Logo stößt
+  var l = document.querySelector('#held img'); l.style.height = '';
+  for (var lh = 8; lh > 5.6 && r.offsetWidth && l.getBoundingClientRect().bottom > r.getBoundingClientRect().top - .2 * rem; ) l.style.height = (lh -= .4) + 'rem';
+  // Sehr lange Warnung („Schweres Gewitter mit Orkanböen, heftigem Starkregen und Hagel“): Schrift schrumpft, bis Uhrzeit und Orte
+  // mit auf die Zeile passen; erst darunter wird abgeschnitten
+  var wb = $('warnband').firstChild;
+  if (wb) {
+    wb.style.fontSize = ''; wb.classList.remove('zwei');
+    var eng = function () { var sm = wb.querySelector('small'); return wb.scrollWidth > wb.clientWidth || (sm && sm.scrollWidth > sm.clientWidth); }; // der Zusatz schrumpft sonst unbemerkt
+    for (var ws = 2.7; ws > 2.25 && eng(); ) wb.style.fontSize = (ws -= .1).toFixed(1) + 'rem';
+    if (eng()) wb.classList.add('zwei'); // passt auch klein nicht: zwei Zeilen statt abschneiden
+  }
+}
+function zeichne() {
+  if (!daten) return;
+  var w = daten[0], jetzt = new Date(), heute = datumHeute(jetzt), std = berlin(jetzt).getUTCHours();
+  var d = w.daily, versatz = d.time.indexOf(heute); // nach Mitternacht rutschen die Tage um eins; -1 = Daten zu alt
+
+  // Wetterlage jetzt: Station, beim Regen korrigiert durch das Radar über Wesel (nur mit frischem Radarbild).
+  // Ob Schnee oder Regen fällt, sagt die Vorhersage für diese Stunde.
+  var radarOrt = PROG && radarBild && PROG.t === radarBild.t && Date.now() - radarStand < 12 * 60000 ? PROG.ort : null;
+  var stundeCode = w.hourly.weather_code[w.hourly.time.indexOf(heute + 'T' + zwei(std) + ':00')];
+  var code = PROBE.wetter ? (PROBE_CODE[PROBE.wetter] != null ? PROBE_CODE[PROBE.wetter] : w.current.weather_code) : jetztCode(w.current.weather_code, radarOrt, stundeCode === 68 || (stundeCode >= 71 && stundeCode <= 77) || stundeCode >= 85 && stundeCode <= 86, w.current.cloud_cover);
+
+  himmelStellen(w, d, versatz, jetzt, code);
+
+  var hoch = versatz >= 0 ? d.temperature_2m_max[versatz] : null, tief = versatz >= 0 ? d.temperature_2m_min[versatz] : null;
+
+  setze($('heldtemp'), grad(w.current.temperature_2m, 1));
+  var kommt = regenKommt(w.hourly, heute, std, code);
+  setze($('heldtext'), '<div><b>' + lage(code)[1] + '</b>' + (typeof hoch === 'number' && typeof tief === 'number'
+    ? '<span>Höchst ' + grad(hoch, 0) + ' · Tiefst ' + grad(tief, 0) + '</span>' : '')
+    + (kommt ? '<span class="kommt">' + kommt + '</span>' : '')
+    + '</div>' + icon(code, PROBE.phase ? +(PROBE.phase !== 'nacht') : w.current.is_day));
+
+  var wb = warnText(warnungen, jetzt);
+  setze($('warnband'), wb);
+  document.body.classList.toggle('warnung', !!wb);
+
+  setze($('heute'), ABSCHNITTE.map(function (ab) {
+    // Die Stundenwerte reichen drei Tage weit, gelten also auch kurz nach Mitternacht; nur bei zu alten Daten bleibt es leer
+    var x = versatz >= 0 ? abschnitt(w.hourly, heute, ab[1], ab[2], ab[3]) : {};
+    var aktiv = std >= ab[2] && std < ab[3];
+    return '<div' + (aktiv ? ' class="jetzt"' : std >= ab[3] ? ' class="vorbei"' : '') + '><h2>' + ab[0] + '<small>' + ab[2] + '–' + ab[3] + '</small></h2>'
+      + (typeof x.temp === 'number' ? icon(x.code, x.tag) + '<div class="temp">' + grad(x.temp, 0) + '</div>'
+        + '<div class="regen">' + TROPFEN + prozent(x.regen) + '</div>' : '<div class="temp">–</div>') + '</div>';
+  }).join(''));
+
+  // Vorschau: gleicher Aufbau wie die Tagesabschnitte
+  setze($('tage'), ['Heute', 'Morgen', 'Übermorgen'].map(function (name, n) {
+    var i = versatz + n, x = null;
+    if (versatz >= 0 && typeof d.temperature_2m_max[i] === 'number')
+      // Regen bei „Heute“: nur noch die Stunden, die kommen (ein Schauer von heute früh soll abends nicht mehr 100 % zeigen)
+      x = { code: d.weather_code[i], max: d.temperature_2m_max[i], min: d.temperature_2m_min[i],
+        regen: n ? d.precipitation_probability_max[i] : regenMax(w.hourly, heute, std, 24 - std) };
+    return '<div><h2>' + name + '</h2>' + (x ? icon(x.code, 1)
+      + '<div class="temp">' + grad(x.max, 0) + '<small>' + grad(x.min, 0) + '</small></div>'
+      + '<div class="regen">' + TROPFEN + prozent(x.regen) + '</div>' : '<div class="temp">–</div>') + '</div>';
+  }).join(''));
+
+  // Veraltet ist die Anzeige auch, wenn nur die Warnungen nicht mehr ankommen (sonst fiele eine neue Warnung unbemerkt aus)
+  var standMs = Math.min(geholt, warnGeholt), alt = Date.now() - standMs > VERALTET, um = hhmm(standMs);
+  var ts = daten.map(function (o) { return o.current.temperature_2m; }), tmax = Math.max.apply(null, ts), tmin = Math.min.apply(null, ts);
+  setze($('orte'), daten.map(function (o, i) {
+    var t = o.current.temperature_2m, k = tmax === tmin ? '' : t === tmax ? ' warm' : t === tmin ? ' kalt' : '';
+    return '<div class="ort' + k + '"><b>' + ORTE[i][0] + '</b><span>' + grad(t, 1)
+      + '</span></div>';
+  }).join('') + '<div id="stand"' + (alt ? ' class="alt"' : '') + '><i></i><span>'
+    + (alt ? 'Veraltet, Stand ' : 'Stand ') + um + ' Uhr</span></div>');
+  document.body.classList.toggle('veraltet', alt);
+  $('warn').innerHTML = 'Daten veraltet<br>Stand ' + um + ' Uhr';
+  heldPassen();
+}
+
+/* ---------- Holen ---------- */
+var letzterVersuch = 0, fehler = 0, laeuft = false, letzteMinute = -1, letzterTag = '';
+
+function aktualisiere() {
+  if (laeuft) return;
+  laeuft = true;
+  letzterVersuch = Date.now();
+  var abbruch = window.AbortController ? new AbortController() : null;
+  var zeit = setTimeout(function () { if (abbruch) abbruch.abort(); }, 20000);
+  holeDWD(abbruch ? abbruch.signal : undefined).then(function (neu) {
+    if (!gueltig(neu)) throw new Error('Antwort unvollständig');
+    daten = neu; geholt = Date.now(); fehler = 0;
+    try { localStorage.setItem(SPEICHER, JSON.stringify({ t: geholt, d: neu })); } catch (e) {}
+  }).catch(function (e) {
+    fehler++;
+    console.error('Wetterdaten nicht geladen (Versuch ' + fehler + '):', e);
+  }).then(function () {
+    clearTimeout(zeit);
+    laeuft = false;
+    if (!daten) ohneDaten('Keine Verbindung, neuer Versuch läuft');
+    zeichne();
+  });
+}
+
+// Warnungen alle 5 Minuten. Bei Fehler bleibt der letzte Stand (kein falsches „keine Warnung“ durch einen Ausfall des Dienstes).
+var warnungen = [], warnVersuch = 0, warnGeholt = Date.now(); // warnGeholt: letzter vollständiger Abruf (der Start zählt als frisch)
+function holeWarnungen() {
+  warnVersuch = Date.now();
+  if (PROBE.warnung) { // Probe: ?warnung=moderate (minor, moderate, severe, extreme)
+    warnGeholt = Date.now();
+    warnungen = [{ severity: PROBE.warnung, event_de: 'STARKREGEN', onset: new Date(Date.now() - 36e5).toISOString(), expires: new Date(Date.now() + 36e5).toISOString() }];
+    return zeichne();
+  }
+  // nur übernehmen, wenn alle 13 Antworten da sind (sonst könnte eine Warnung fälschlich verschwinden)
+  Promise.all(ORTE.map(function (o) { return bsHolen('alerts?lat=' + o[1] + '&lon=' + o[2]); })).then(function (l) {
+    if (!l.every(function (j) { return Array.isArray(j.alerts); })) throw new Error('Antwort unvollständig');
+    warnungen = warnungenZusammen(l); warnGeholt = Date.now(); zeichne();
+  }).catch(function (e) { console.error('Warnungen nicht geladen:', e); });
+}
+
+// Neue Version der Seite selbst holen: alle 10 Minuten die eigene Datei laden, bei Änderung neu laden (kein Eingriff am Stick nötig).
+// shortcut: vergleicht den ganzen Text der Seite (ca. 55 KB, selten); bei Bedarf auf ETag/Versionsnummer umstellen.
+// Außerdem einmal in der Nacht zwischen 3 und 4 Uhr neu laden (räumt den Speicher nach langem Lauf auf) – nur direkt nach
+// einem geglückten Abruf der eigenen Seite, damit das Gerät ohne Netz nie auf einer Fehlerseite landet.
+var versionText = null, versionVersuch = 0, seitenStart = Date.now(), uhrFehler = null;
+function pruefeVersion() {
+  versionVersuch = Date.now();
+  fetch(location.href.split('#')[0], { cache: 'no-store' }).then(function (r) {
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var s = Date.parse(r.headers.get('date'));         // Uhr des Servers: zeigt in der Diagnose, ob die Uhr des Geräts falsch geht
+    if (!isNaN(s)) uhrFehler = Math.round((Date.now() - s) / 1000);
+    return r.text();
+  }).then(function (t) {
+    if (t.length < 1000) return;                       // Fehlerseite o. Ä. nie als neue Version annehmen
+    if (versionText === null) versionText = t;
+    else if (t !== versionText || (Date.now() - seitenStart > 6 * 36e5 && berlin(Date.now()).getUTCHours() === 3)) location.reload();
+  }).catch(function () {});                            // offline oder file://: einfach beim nächsten Mal wieder
+}
+
+// Einbrennschutz (OLED): jede Stunde rückt das ganze Bild um bis zu 0,4 rem weiter, Größe und Aufteilung bleiben gleich
+var VERSATZ = [[0, 0], [.4, 0], [.4, .4], [0, .4], [-.4, .4], [-.4, 0], [-.4, -.4], [0, -.4], [.4, -.4]], versatzNr = -1;
+function einbrennSchutz(d) {
+  var nr = berlin(d).getUTCHours() % VERSATZ.length, v = VERSATZ[nr], p = 2.2;
+  if (nr === versatzNr) return;
+  versatzNr = nr;
+  document.body.style.padding = (p + v[1]) + 'rem ' + (p - v[0]) + 'rem ' + (p - v[1]) + 'rem ' + (p + v[0]) + 'rem';
+}
+
+// Ein Sekundentakt steuert alles. Kein langer Timer, der auf dem TV-Stick einschlafen kann.
+function tick() {
+  var d = new Date(), jetzt = Date.now();
+  if (jetzt - versionVersuch >= 10 * 60 * 1000) pruefeVersion();
+  if (jetzt - warnVersuch >= 5 * 60 * 1000) holeWarnungen();
+  if (jetzt - letzterVersuch >= wartezeit(fehler)) aktualisiere();
+  // Neue Fenstergröße: Karte neu vermessen und Radar passend neu holen
+  if (!geo || Math.abs(kcv.clientWidth * (window.devicePixelRatio || 1) - geo.w) > 2 || Math.abs(kcv.clientHeight * (window.devicePixelRatio || 1) - geo.h) > 2) { geoRechnen(); zeichneKarte(); radarVersuch = 0; }
+  // Radar: sobald der Wetterdienst ein neues Bild hat (alle 5 Minuten); nach einem Fehlschlag schneller wieder
+  if (jetzt - radarVersuch >= radarWarte(radarFehler, !radarBild || radarBild.t !== radarZeit(jetzt) || radarBild.box !== radarBox())) ladeRadar();
+  // Prognose zu jedem frischen Radarbild neu; nach Fehlschlag jede Minute (erst wenn das Bild zum aktuellen Zoom passt)
+  var bildPasst = radarBild && radarBild.box === radarBox();
+  if (bildPasst && jetzt - radarStand < 20 * 60000 && (!PROG || PROG.t !== radarBild.t) && jetzt - progVersuch >= 60000) holePrognose(radarBild.t);
+  if (filmAn && bildPasst && jetzt - radarStand < 20 * 60000 && (!FILM || FILM.t !== radarBild.t) && (jetzt - filmVersuch >= 60000 || filmVersuchT !== radarBild.t)) ladeFilm(radarBild.t, radarBild.cv);
+  // Blitze und Warnungen der gewählten Ebene alle 5 Minuten neu (nach Fehler jede Minute), bei neuem Kartenausschnitt sofort
+  var eb = ebeneDaten[ebene];
+  if (!mitRegen() && ebene !== 'warnung' && jetzt - stadtVersuch >= (stadtWerte && stadtGeholt >= stadtVersuch ? 15 : 1) * 60000) ladeStadtWerte();
+  // Temperaturfläche nur bei gewählter Ebene: neu, wenn älter als 3 Stunden oder die erste Stunde vorbei ist; nach Fehler alle 2 Minuten
+  // Gewählte Ebene sofort; die andere leise vorladen, sobald der Start durch ist (dann geht das Umschalten ohne Warten)
+  var vorladen = daten && radarBild && jetzt - seitenStart > 20000;
+  if ((ebene === 'temp' || vorladen) && !tLaedt && jetzt - tVersuch >= 120000 && (!TFELD || jetzt - TFELD.geholt > 3 * 36e5 || jetzt - TFELD.t0 > 2 * 36e5)) ladeTempFeld();
+  if ((ebene === 'wind' || vorladen) && !wLaedt && jetzt - wVersuch >= 120000 && (!WFELD || jetzt - WFELD.geholt > 3 * 36e5 || jetzt - WFELD.t0 > 2 * 36e5)) ladeWindFeld();
+  if (geo && EBENEN[ebene].wms && (!eb || (!eb.laedt && (eb.box !== radarBox() || jetzt - eb.versuch >= (eb.cv && eb.geholt >= eb.versuch ? 300000 : 60000))))) ladeEbene(ebene);
+  if (d.getMinutes() !== letzteMinute) { // jede Minute: „jetzt“-Markierung, Tageswechsel, Himmel, Veraltet-Warnung
+    letzteMinute = d.getMinutes();
+    if (datumHeute(d) !== letzterTag) { if (letzterTag) letzterVersuch = 0; letzterTag = datumHeute(d); } // neuer Tag: gleich frische Daten holen
+    progZeigen();
+    einbrennSchutz(d);
+    if (!mitRegen()) { setzeKarte(); radarKopf(); } // Wind und Temperatur mit den neuesten Werten
+    zeichne();
+  }
+}
+
+// Selbsttest der Rechenlogik (Meldung nur in der Konsole)
+(function () {
+  var h = { time: ['2026-01-01T17:00', '2026-01-01T18:00', '2026-01-01T19:00'], temperature_2m: [5, 4, 3.5],
+    precipitation_probability: [10, 80, 30], weather_code: [0, 61, 3], is_day: [0, 0, 0] };
+  var x = abschnitt(h, '2026-01-01', 19, 17, 22);
+  console.assert(x.temp === 3.5 && x.code === 3 && x.regen === 80, 'abschnitt() rechnet falsch');
+  // Der Regenwert einer Uhrzeit gilt für die Stunde davor: 18–19 Uhr ist der Eintrag von 19 Uhr, nicht der von 18 Uhr
+  console.assert(abschnitt(h, '2026-01-01', 18, 18, 19).regen === 30 && regenMax(h, '2026-01-01', 17, 1) === 80
+    && regenMax(h, '2026-01-01', 19, 3) === null && regenMax(h, '2026-01-02', 9, 3) === null, 'regenMax() falsch');
+  // Deutsche Uhrzeit ohne Zeitzone des Geräts: Winter +1, Sommer +2, Umstellung am letzten Sonntag im März/Oktober um 01:00 Weltzeit
+  console.assert(hhmm(Date.UTC(2026, 0, 1, 12, 5)) === '13:05' && hhmm(Date.UTC(2026, 6, 1, 12, 5)) === '14:05'
+    && hhmm(Date.UTC(2026, 2, 29, 0, 59)) === '01:59' && hhmm(Date.UTC(2026, 2, 29, 1, 0)) === '03:00'
+    && hhmm(Date.UTC(2026, 9, 25, 0, 59)) === '02:59' && hhmm(Date.UTC(2026, 9, 25, 1, 0)) === '02:00'
+    && hhmm(Date.UTC(2027, 2, 28, 1, 0)) === '03:00' && hhmm(Date.UTC(2027, 9, 31, 1, 0)) === '02:00', 'deutsche Uhrzeit falsch');
+  console.assert(datumHeute(Date.UTC(2026, 11, 31, 23, 30)) === '2027-01-01' && datumHeute(Date.UTC(2026, 5, 30, 21, 59)) === '2026-06-30'
+    && datumHeute(new Date(Date.UTC(2026, 5, 30, 22, 0))) === '2026-07-01' && tagPlus('2026-10-24', 3) === '2026-10-27' && tagPlus('2026-12-30', 3) === '2027-01-02', 'Datum falsch');
+  console.assert(warnName('STARKES GEWITTER') === 'Starkes Gewitter' && warnName('STURMBÖEN') === 'Sturmböen' && warnName('UV-INDEX') === 'UV-Index'
+    && warnName('SCHWERES GEWITTER mit ORKANBÖEN') === 'Schweres Gewitter mit Orkanböen'
+    && warnName('SCHWERES GEWITTER mit EXTREMEN ORKANBÖEN, EXTREM HEFTIGEM STARKREGEN und HAGEL') === 'Schweres Gewitter mit extremen Orkanböen, extrem heftigem Starkregen und Hagel'
+    && warnName('EXTREM ERGIEBIGER DAUERREGEN') === 'Extrem ergiebiger Dauerregen' && warnName('STARKREGEN') === 'Starkregen' && warnName(null) === 'Warnung', 'warnName() falsch');
+  console.assert(art(0) === 'klar' && art(63) === 'regen' && art(95) === 'gewitter' && art(1234) === 'wolken', 'art() falsch');
+  console.assert(grad(-1.25, 1) === '−1,3°' && grad(-0.04, 1) === '0,0°' && grad(9.5, 0) === '10°', 'grad() falsch');
+  // boxRect(): Ausschnitt in Metern -> Lage auf der Karte (Karte: links 0, oben 100, 2 m je Bildpunkt)
+  var g0 = geo; geo = { minx: 0, maxy: 100, res: 2 };
+  console.assert(boxRect('10,20,50,90').join() === '5,5,20,35', 'boxRect() falsch');
+  geo = g0;
+  // wcsLesen()/feldAn(): 3×2-Gitter (0,5° Zellen, Nordzeile zuerst); Zellmitte = Wert, dazwischen weich, kaputte Werte = keine Daten
+  var wf = wcsLesen('Grid bounds: GeneralBounds[(6.0, 51.0), (7.5, 52.0)]\nContents:\nBand 0:\n1 2 3\n4 5 6\n');
+  console.assert(wf && wf.w === 3 && wf.h === 2 && feldAn(wf, 6.25, 51.75) === 1 && feldAn(wf, 7.25, 51.25) === 6
+    && Math.abs(feldAn(wf, 6.5, 51.5) - 3) < 1e-6 && feldAn(wf, 0, 60) === 1 && wcsLesen('Band 0:\n1 2') === null
+    && wcsLesen('GeneralBounds[(6.0, 51.0), (7.5, 52.0)]\nBand 0:\n1 2 3\n4 NaN 6') === null, 'wcsLesen()/feldAn() falsch');
+  // Wind: zwei Bänder (Ost, Nord); Westwind 3 m/s = 10,8 km/h aus 270°, Nordwind = aus 0°
+  var wt = 'GeneralBounds[(6.0, 51.0), (7.0, 52.0)]\nBand 0:\n3 3\n3 3\nBand 1:\n0 0\n-2 -2\n', wu = wcsLesen(wt, 0), wv = wcsLesen(wt, 1);
+  var wSave = WFELD; WFELD = { t0: 0, stunden: [[wu, wv], [wu, wv]] };
+  var wa1 = windAn(6.5, 51.75, 0);
+  console.assert(wu && wv && wu.werte.length === 4 && wv.werte[2] === -2 && Math.abs(wa1.kmh - 10.8) < 1e-6 && Math.abs(wa1.von - 270) < 1e-6, 'Wind-Band oder windAn() falsch');
+  WFELD = { t0: 0, stunden: [[wcsLesen('GeneralBounds[(6.0, 51.0), (7.0, 52.0)]\nBand 0:\n0 0\n0 0', 0), wv], [wu, wv]] };
+  console.assert(Math.abs(windAn(6.5, 51.25, 0).von) < 1e-6, 'Nordwind falsch');
+  // Angleichen: Punktvorhersage in Wesel 21,6 km/h aus Westen (6 m/s), Modell 3 m/s -> in Wesel gilt die Punktvorhersage
+  var v1 = windVek(10.8, 270), dSave = daten, sSave = stadtWerte, gSave = geholt;
+  console.assert(Math.abs(v1[0] - 3) < 1e-9 && Math.abs(v1[1]) < 1e-9 && Math.abs(windVek(7.2, 0)[1] + 2) < 1e-9, 'windVek() falsch');
+  WFELD = { t0: 0, stunden: [[wu, wv], [wu, wv]] }; stadtWerte = null; geholt = -1;
+  daten = ORTE.map(function (o, i) { return { current: {}, mos: i ? [] : [[0, 5, 21.6, 270], [36e5, 7, 21.6, 270]] }; });
+  var wa2 = windAn(ORTE[0][2], ORTE[0][1], 0);
+  console.assert(Math.abs(wa2.kmh - 21.6) < .3 && Math.abs(wa2.von - 270) < 2 && Math.abs(mosAn(daten[0].mos, 18e5, 1) - 6) < 1e-9 && mosAn([], 0, 1) === null,
+    'Wind-Angleichen oder mosAn() falsch');
+  daten = dSave; stadtWerte = sSave; geholt = gSave; wAbw = { key: '' };
+  WFELD = wSave;
+  console.assert(tFarbe(-30).join() === '111,45,189' && tFarbe(0).join() === '88,182,240' && tFarbe(2.5).join() === '91,198,218', 'tFarbe() falsch');
+  // regenKommt(): Eintrag 12 Uhr = Regen 11–12 Uhr; um 10 Uhr also „ab ca. 11 Uhr“; über Mitternacht; zu kurze Vorhersage = nichts
+  var rk = { time: ['2026-01-01T11:00', '2026-01-01T12:00', '2026-01-01T13:00', '2026-01-01T23:00', '2026-01-02T00:00', '2026-01-02T01:00'],
+    weather_code: [3, 63, 63, 0, 73, 0] };
+  console.assert(regenKommt(rk, '2026-01-01', 10, 3) === 'Regen ab ca. 11 Uhr' && regenKommt(rk, '2026-01-01', 11, 0) === 'Regen in der nächsten Stunde'
+    && regenKommt(rk, '2026-01-01', 11, 63) === '' && regenKommt(rk, '2026-01-01', 10, 63) === ''
+    && regenKommt(rk, '2026-01-01', 22, 0) === 'Schnee ab ca. 23 Uhr' && regenKommt(rk, '2026-01-01', 13, 0) === ''
+    && regenKommt({ time: rk.time, weather_code: [0, 0, 0, 0, 0, 0] }, '2026-01-01', 10, 0) === 'Nächste 3 Std. trocken', 'regenKommt() falsch');
+  console.assert(wartezeit(0) === TAKT && wartezeit(1) === 20000 && wartezeit(3) === 80000 && wartezeit(20) === 300000, 'wartezeit() falsch');
+  var rj = new Date(2026, 0, 1, 17, 30);
+  console.assert(warnText([], rj) === '' && warnText([{ severity: 'x', onset: 0, expires: 8e15 }], rj) === ''
+    && warnText([{ severity: 'severe', event_de: 'A<b>', onset: 0, expires: 8e15 }], rj).indexOf('A&lt;b&gt;') > 0, 'warnText() falsch');
+  console.assert(!gueltig(null)&& !gueltig([]) && !gueltig([{ current: {} }]), 'gueltig() nimmt Unvollständiges an');
+  // verschiebung(): Fleck um (3, -2) Bildpunkte verschoben muss gefunden werden; leeres Bild = keine Aussage
+  var va = new Uint8Array(30 * 20), vb = new Uint8Array(30 * 20), vi, vj, vs;
+  for (vj = 6; vj < 12; vj++) for (vi = 8; vi < 16; vi++) { va[vj * 30 + vi] = 4; vb[(vj - 2) * 30 + vi + 3] = 4; }
+  vs = verschiebung(va, vb, 30, 20, 6);
+  console.assert(vs && vs.dx === 3 && vs.dy === -2 && verschiebung(new Uint8Array(600), vb, 30, 20, 6) === null, 'verschiebung() falsch');
+  // DWD-Übersetzung: Wettercodes, Sonnenzeiten (Wesel 12.11.2026: 06:46 / 15:49 UTC), Tagessymbol, Tageswerte, Angleichen
+  console.assert(bsCode({ condition: 'rain', precipitation: 1.5 }) === 61 && bsCode({ condition: 'rain', precipitation: 3 }) === 63
+    && bsCode({ condition: 'rain', precipitation: 12 }) === 65 && bsCode({ condition: 'dry', cloud_cover: 10 }) === 0
+    && bsCode({ condition: 'dry', cloud_cover: 90 }) === 3 && bsCode({ icon: 'thunderstorm' }) === 95 && bsCode({ condition: 'fog' }) === 45
+    && bsCode({ condition: 'fog', visibility: 200, cloud_cover: 0 }) === 45 && bsCode({ condition: 'fog', icon: 'fog', visibility: 5200, cloud_cover: 0 }) === 0
+    && bsCode({ condition: 'snow', precipitation_60: 3 }) === 73 && bsCode({ condition: 'snow', precipitation_60: 6 }) === 75
+    && bsCode({}) === 3 && LAGEN[bsCode({ condition: 'sleet' })], 'bsCode() falsch');
+  // Radar über dem Ort geht beim Regen vor: nass trotz trockener Station, trocken trotz Regen an der Station; ein einzelnes nasses Feld zählt nicht
+  var nass = { stufe: 6, nass: 9 }, trocken = { stufe: 0, nass: 0 };
+  console.assert(jetztCode(3, nass, false, 100) === 63 && jetztCode(0, { stufe: 2, nass: 4 }, false, 0) === 61 && jetztCode(3, { stufe: 10, nass: 9 }, false) === 65
+    && jetztCode(3, nass, true) === 73 && jetztCode(3, { stufe: 5, nass: 1 }, false) === 3 && jetztCode(61, trocken, false, 30) === 1
+    && jetztCode(63, trocken, false, null) === 3 && jetztCode(61, nass, false) === 61 && jetztCode(71, trocken, false, 0) === 71
+    && jetztCode(95, trocken, false, 0) === 95 && jetztCode(45, trocken, false, 0) === 45 && jetztCode(61, null, false, 0) === 61, 'jetztCode() falsch');
+  var rf = new Uint8Array(12); rf[5] = 4; rf[6] = 2; rf[1] = 1; // 4 breit, 3 hoch
+  console.assert(radarAmOrt(rf, 4, 3, 1, 1).stufe === 4 && radarAmOrt(rf, 4, 3, 1, 1).nass === 3 && radarAmOrt(rf, 4, 3, 3, 2).stufe === 0
+    && radarAmOrt(rf, 4, 3, 3, 2).nass === 1 && radarAmOrt(rf, 4, 3, 0, 0).nass === 2, 'radarAmOrt() falsch');
+  var sz = sonnenzeiten(Date.parse('2026-11-12T12:00:00Z'), 51.6586, 6.6178);
+  console.assert(Math.abs(sz[0] - Date.parse('2026-11-12T06:46:00Z')) < 6e5 && Math.abs(sz[1] - Date.parse('2026-11-12T15:49:00Z')) < 6e5, 'sonnenzeiten() falsch');
+  console.assert(tagesCode([2, 2, 3, 61, 63, 61]) === 61 && tagesCode([2, 3, 3, 61]) === 3 && tagesCode([]) === 3, 'tagesCode() falsch');
+  var st = [];
+  for (vi = 0; vi < 24; vi++) st.push({ timestamp: '2026-01-01T' + zwei(vi) + ':00:00+01:00', temperature: vi === 14 ? 8 : 2, precipitation: vi === 10 ? 3 : 0, precipitation_probability: null, condition: vi === 10 ? 'rain' : 'dry', cloud_cover: 50, icon: '' });
+  st[12].precipitation_probability_6h = 40; // gilt für 06–12 Uhr, gehört in die Mitte (9 Uhr)
+  var frueh = Date.parse('2026-01-01T00:00:00+01:00'), spaet = Date.parse('2026-01-01T09:30:00+01:00');
+  var ou = ortUebersetzen(st, { weather: { temperature: 3, icon: 'clear-day', wind_speed_10: 9 }, sources: [] }, 51.66, 6.62, [], frueh);
+  console.assert(ou.daily.time[0] === '2026-01-01' && ou.daily.temperature_2m_max[0] === 8 && ou.daily.temperature_2m_min[0] === 2
+    && ou.daily.precipitation_probability_max[0] === 100 && ou.hourly.time[10] === '2026-01-01T10:00' && ou.hourly.weather_code[10] === 63
+    && ou.hourly.is_day[12] === 1 && ou.hourly.is_day[2] === 0 && ou.current.is_day === 1, 'ortUebersetzen() falsch');
+  st = st.map(function (x) { var y = {}; for (var k in x) y[k] = x[k]; y.precipitation = 0; y.condition = 'dry'; return y; });
+  // 6-Stunden-Wert von 12 Uhr gehört in die Mitte (9 Uhr), aber nur solange 9 Uhr noch nicht vorbei ist; ohne Messung gibt es keine Wetterlage
+  console.assert(ortUebersetzen(st, null, 51.66, 6.62, [], frueh).hourly.precipitation_probability[9] === 40
+    && ortUebersetzen(st, null, 51.66, 6.62, [], spaet).hourly.precipitation_probability[9] === 0
+    && ortUebersetzen(st, null, 51.66, 6.62, [], frueh).current.weather_code === null, '6-Stunden-Regen falsch');
+  // Regen um 0 Uhr (gilt für 23–24 Uhr) zählt zum Tag davor
+  st.push({ timestamp: '2026-01-02T00:00:00+01:00', temperature: 2, precipitation: 0, precipitation_probability: 77, condition: 'dry', cloud_cover: 50, icon: '' });
+  console.assert(ortUebersetzen(st, null, 51.66, 6.62, [], frueh).daily.precipitation_probability_max[0] === 77, 'Tagesregen um Mitternacht falsch');
+  var tz = [{ timestamp: '2026-01-01T10:00:00Z', temperature: 2, source_id: 1 }, { timestamp: '2026-01-01T11:00:00Z', temperature: 4, source_id: 2 },
+    { timestamp: '2026-01-01T12:00:00Z', temperature: 6, source_id: 2 }], vt = Date.parse('2026-01-01T11:30:00Z');
+  // zwischen zwei Stunden; bis 90 Minuten vor der ersten Vorhersagestunde wird zurückgerechnet, weiter nicht; nach dem Ende nichts
+  console.assert(tempZu(tz, vt, { 2: 1 }) === 5 && tempZu(tz, vt - 36e5, { 2: 1 }) === 3 && tempZu(tz, vt - 3 * 36e5, { 2: 1 }) === null
+    && tempZu(tz, vt + 36e5, { 2: 1 }) === null && tempZu(tz, vt - 36e5) === 3 && tempZu(tz.slice(0, 1), vt) === null, 'tempZu() falsch');
+  console.assert(Math.abs(kmZwischen(51.6586, 6.6178, 51.5088, 6.70177) - 17.7) < .5, 'kmZwischen() falsch');
+  // Station nah (Fehler −2) und weit weg (Fehler +2): der nahe Ort wird fast um −2 korrigiert; ohne Vorhersage gilt die Messung der nahen Station
+  var ja = jetztAngleichen([{ current: { lat: 51.5, lon: 6.7, vorhersage: 4 } }, { current: { lat: 51.5, lon: 6.7, vorhersage: null } }],
+    [{ lat: 51.51, lon: 6.7, fehler: -2, messung: 1.5 }, { lat: 52.5, lon: 6.7, fehler: 2, messung: 9 }]);
+  console.assert(Math.abs(ja[0].current.temperature_2m - 2) < .05 && ja[1].current.temperature_2m === 1.5
+    && jetztAngleichen([{ current: { lat: 51, lon: 6, vorhersage: 4.04 } }], [])[0].current.temperature_2m === 4
+    && jetztAngleichen([{ current: { lat: 51, lon: 6, vorhersage: 4 } }], [{ lat: 51, lon: 6, fehler: null, messung: 9 }])[0].current.temperature_2m === 4
+    && jetztAngleichen([{ current: { lat: 51, lon: 6, vorhersage: null } }], [])[0].current.temperature_2m === null, 'jetztAngleichen() falsch');
+  var wz = warnungenZusammen(ORTE.map(function (o, i) { return { alerts: i < 2 ? [{ alert_id: 'x', severity: 'moderate', event_de: 'GEWITTER', onset: 0, expires: 8e15 }] : [] }; }));
+  console.assert(wz.length === 1 && wz[0]._orte.join() === 'Wesel,Dinslaken' && warnText(wz, rj).indexOf('Wesel, Dinslaken') > 0, 'warnungenZusammen() falsch');
+  var M = 60000;
+  console.assert(phase(100 * M, 90 * M, 600 * M, 1) === 'daemmerung' && phase(300 * M, 90 * M, 600 * M, 1) === 'tag'
+    && phase(700 * M, 90 * M, 600 * M, 0) === 'nacht' && phase(1, NaN, NaN, 1) === 'tag', 'phase() falsch');
+  console.assert(radarWarte(1, 0) === 5000 && radarWarte(3, 0) === 20000 && radarWarte(9, 0) === 120000
+    && radarWarte(0, false) === RADAR.takt && radarWarte(0, true) === 30000, 'radarWarte() falsch');
+  console.assert(radarZeit(Date.UTC(2026, 0, 1, 12, 4, 44)) === Date.UTC(2026, 0, 1, 11, 55) && radarZeit(Date.UTC(2026, 0, 1, 12, 4, 45)) === Date.UTC(2026, 0, 1, 12, 0)
+    && radarZeit(Date.UTC(2026, 0, 1, 12, 9, 44)) === Date.UTC(2026, 0, 1, 12, 0), 'radarZeit() falsch');
+  var P2 = [[6.7, 51.5], [6.9, 52.5]], P3 = [[6, 51], [7, 51]];
+  console.assert(Math.abs(mischen(gewichte(P2, 6.7, 51.5), [-2, 2]) + 2) < .01 && mischen(gewichte([], 6, 51), []) === 0
+    && Math.abs(mischen(gewichte(P3, 6.5, 51), [-1, 1])) < 1e-9 && mischen(gewichte(P3, 6.5, 51), [NaN, 1]) === 1 && mischen(gewichte([[6, 51]], 6, 51), [2], 1) === 1, 'gewichte()/mischen() falsch');
+  console.assert(stationKm({ weather: { source_id: 1, fallback_source_ids: { temperature: 2 } }, sources: [{ id: 1, lat: 51.66, lon: 6.62 }, { id: 2, lat: 51.51, lon: 6.7 }] },
+    'temperature', 51.66, 6.62) > 15 && stationKm(null, 'temperature', 51, 6) === 99, 'stationKm() falsch');
+  // Derselbe Frost aus vier Warnzellen = eine Warnung (kein „+ weitere“), Orte zusammengezählt, früheste Zeit
+  var frost = warnText(['Dinslaken', 'Alpen', 'Xanten', 'Moers'].map(function (n, i) {
+    return { severity: 'minor', event_de: 'FROST', onset: rj.getTime() + (i + 1) * 36e5, expires: 8e15, _orte: [n] }; }), rj);
+  console.assert(frost.indexOf('weitere') < 0 && frost.indexOf('in 4 Orten') > 0 && frost.indexOf('ab ' + hhmm(rj.getTime() + 36e5)) > 0, 'gleiche Warnungen nicht zusammengefasst');
+  // Störecho: ein einzelnes Kilometer-Kästchen (4×4 Bildpunkte) fällt weg, zwei nebeneinander bleiben
+  var ns = new Uint8Array(40 * 20), nx, ny;
+  for (ny = 8; ny < 12; ny++) for (nx = 4; nx < 8; nx++) { ns[ny * 40 + nx] = 1; ns[ny * 40 + nx + 20] = ns[ny * 40 + nx + 24] = 1; }
+  entstoeren(ns, 40, 20);
+  console.assert(!ns[9 * 40 + 5] && ns[9 * 40 + 25] && ns[9 * 40 + 29], 'entstoeren() falsch');
+  console.assert(radarFarbe(1, 153, 52) === EIGEN[2] && radarFarbe(200, 0, 160) === EIGEN[EIGEN.length - 1], 'radarFarbe() falsch');
+  // jede Wetterlage und jede Spielart muss für jede Tageszeit gültige Zahlen liefern
+  var code, fam, vi, ph, z, k;
+  for (code in LAGEN) console.assert(VARIANTEN[LAGEN[code][0]] && ICONART[LAGEN[code][0]] && PALETTE[LAGEN[code][0]], 'Wetterlage ohne Himmel: ' + code);
+  for (fam in VARIANTEN) for (vi = 0; vi < VARIANTEN[fam].length; vi++) for (ph in FARBEN) {
+    z = himmelZiel(fam, .8, ph, { wind: .3, boe: .2, wolken: .5, kmh: 30 }, vi);
+    for (k in z) console.assert(typeof z[k] === 'number' && !isNaN(z[k]), 'Himmel-Wert ungültig: ' + fam + '/' + vi + '/' + ph + '/' + k);
+  }
+})();
+
+// Start: zuletzt gespeicherten Stand sofort zeigen (falls frisch genug), dann neu holen
+try {
+  var alt = JSON.parse(localStorage.getItem(SPEICHER));
+  if (alt && Date.now() - alt.t < WEGWERFEN && gueltig(alt.d)) { daten = alt.d; geholt = alt.t; }
+} catch (e) {}
+if (!daten) ohneDaten('Lade Wetterdaten …');
+geoRechnen();
+zoomSetzen(zoomNr); // nur Knopfzustand (Stufe steht schon)
+ebeneSetzen(ebene);
+radarAusSpeicher();
+requestAnimationFrame(himmel);
+requestAnimationFrame(filmBild);
+tick();
+setInterval(tick, 1000);
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { zeichneKarte(); heldPassen(); }); // Beschriftung in der richtigen Schrift, Breiten neu messen
+window.addEventListener('online', function () { fehler = 0; aktualisiere(); radarVersuch = 0; radarFehler = 0; });
+</script>
+</body>
+</html>
