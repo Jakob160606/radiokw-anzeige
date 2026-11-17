@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <!-- Versionsnummer der Seite: bei jeder Änderung um eins erhöhen. Der Stick nimmt eine Seite aus dem Internet nur, wenn ihre Nummer nicht kleiner ist als die der eingebauten Seite. -->
-<meta name="kw-version" content="4">
+<meta name="kw-version" content="5">
 <title>Radio K.W. Wetter</title>
 <link rel="icon" href="logo.png">
 <style>
@@ -19,14 +19,16 @@
     --aus: cubic-bezier(.23, 1, .32, 1);
   }
   /* 1rem = 1 % der Bildschirmhöhe: alles wächst mit 1080p/1440p mit */
-  html { font-size: 1vh; }
+  html { font-size: .92vh; }  /* 8 % kleiner, damit mit dem sicheren Rand alles noch passt */
+  /* Sicherer Rand gegen Fernseher, die ein paar Prozent vom Bild abschneiden (Overscan): 5 % der Höhe oben/unten, 7 % seitlich */
+  :root { --rv: 5.4rem; --rh: 7.6rem; }
   * { box-sizing: border-box; margin: 0; }
   /* Daueranzeige: nichts markieren, nichts heranzoomen, kein Lupen-/Kopiermenü, kein grauer Tipp-Blitz, Bilder nicht ziehbar */
   html, body { touch-action: none; -ms-touch-action: none; overscroll-behavior: none; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; -webkit-user-drag: none; }
   button { touch-action: manipulation; }
   body {
-    height: 100vh; overflow: hidden; padding: 2.2rem;
+    height: 100vh; overflow: hidden; padding: var(--rv) var(--rh);
     background: #050a1c; color: var(--w);
     font-family: Inter, "Segoe UI", Roboto, sans-serif; font-weight: 500;
     font-variant-numeric: tabular-nums; font-optical-sizing: auto;
@@ -36,7 +38,7 @@
     cursor: none;
   }
   /* Quellenvermerk im unteren Rand, klein aber lesbar */
-  #quelle { position: fixed; right: 2.4rem; bottom: .5rem; font-size: 1.3rem; font-weight: 500; line-height: 1.3; color: rgba(255, 255, 255, .82); white-space: nowrap;
+  #quelle { position: fixed; right: calc(var(--rh) + 2.4rem); bottom: calc(var(--rv) - 1.9rem); font-size: 1.3rem; font-weight: 500; line-height: 1.3; color: rgba(255, 255, 255, .82); white-space: nowrap;
     text-shadow: 0 0 .4rem rgba(0, 0, 16, .9), 0 0 1.2rem rgba(0, 0, 16, .7); }  /* bleibt auch vor hellem Taghimmel lesbar */
   @media (max-aspect-ratio: 3/2) { #quelle { font-size: 1.5rem; } } /* Tablet: sonst unter 11 px */
   ::selection { background: var(--w); color: #000; }
@@ -1148,7 +1150,7 @@ function geoRechnen() {
   kcv.width = Math.round(b.width * dpr); kcv.height = Math.round(b.height * dpr);
   var res = RADAR.km * 1000 / Math.cos(RADAR.lat * Math.PI / 180) / kcv.width, x = merkX(RADAR.lon), y = merkY(RADAR.lat);
   geo = { w: kcv.width, h: kcv.height, res: res, minx: x - kcv.width / 2 * res, maxx: x + kcv.width / 2 * res,
-    miny: y - kcv.height / 2 * res, maxy: y + kcv.height / 2 * res, rem: window.innerHeight / 100 * dpr };
+    miny: y - kcv.height / 2 * res, maxy: y + kcv.height / 2 * res, rem: parseFloat(getComputedStyle(document.documentElement).fontSize) * dpr };
 }
 
 // Bild des Wetterdienstes in unsere Farben umfärben; „keine Daten“ und der Rand des Messgebiets fallen weg
@@ -2124,7 +2126,7 @@ function ohneDaten(text) { // Kaltstart ohne gespeicherten Stand: jede Karte sag
   $('heute').__html = $('tage').__html = null;
 }
 function heldPassen() {
-  var t = $('heldtemp'), r = document.body.classList.contains('veraltet') ? $('warn') : $('heldtext'), rem = window.innerHeight / 100, g = document.createRange();
+  var t = $('heldtemp'), r = document.body.classList.contains('veraltet') ? $('warn') : $('heldtext'), rem = parseFloat(getComputedStyle(document.documentElement).fontSize), g = document.createRange();
   g.selectNodeContents(t); t.style.fontSize = '';
   for (var gr = 15; gr > 9 && r.offsetWidth && g.getBoundingClientRect().right > r.getBoundingClientRect().left - 1.5 * rem; ) t.style.fontSize = (gr -= .5) + 'rem';
   // Logo schrumpft (bis 5,6 rem), wenn ein langer, zweizeiliger Wettertext sonst an das Logo stößt
@@ -2263,10 +2265,10 @@ function pruefeVersion() {
 // Einbrennschutz (OLED): jede Stunde rückt das ganze Bild um bis zu 0,4 rem weiter, Größe und Aufteilung bleiben gleich
 var VERSATZ = [[0, 0], [.4, 0], [.4, .4], [0, .4], [-.4, .4], [-.4, 0], [-.4, -.4], [0, -.4], [.4, -.4]], versatzNr = -1;
 function einbrennSchutz(d) {
-  var nr = berlin(d).getUTCHours() % VERSATZ.length, v = VERSATZ[nr], p = 2.2;
+  var nr = berlin(d).getUTCHours() % VERSATZ.length, v = VERSATZ[nr], pv = 5.4, ph = 7.6; // = --rv/--rh im CSS
   if (nr === versatzNr) return;
   versatzNr = nr;
-  document.body.style.padding = (p + v[1]) + 'rem ' + (p - v[0]) + 'rem ' + (p - v[1]) + 'rem ' + (p + v[0]) + 'rem';
+  document.body.style.padding = (pv + v[1]) + 'rem ' + (ph - v[0]) + 'rem ' + (pv - v[1]) + 'rem ' + (ph + v[0]) + 'rem';
 }
 
 // Ein Sekundentakt steuert alles. Kein langer Timer, der auf dem TV-Stick einschlafen kann.
